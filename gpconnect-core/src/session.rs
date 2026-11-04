@@ -48,7 +48,7 @@ enum Job {
 /// `spawn` creates a background thread with its own tokio runtime so the GUI
 /// does not need to be async itself.
 pub struct Session {
-    cmd_tx: mpsc::UnboundedSender<Job>,
+    cmd_tx: Option<mpsc::UnboundedSender<Job>>,
     worker: Option<std::thread::JoinHandle<()>>,
     state: Arc<Mutex<ConnState>>,
 }
@@ -77,7 +77,7 @@ impl Session {
                 rt.block_on(worker_loop(cmd_rx, event_tx, state2));
             })?;
 
-        Ok(Session { cmd_tx, worker: Some(worker), state })
+        Ok(Session { cmd_tx: Some(cmd_tx), worker: Some(worker), state })
     }
 
     pub fn state(&self) -> ConnState {
@@ -93,18 +93,25 @@ impl Session {
         let openconnect_bin = openconnect_bin.unwrap_or_else(|| DEFAULT_OPENCONNECT_BIN.into());
         *self.state.lock().unwrap() = ConnState::Authenticating;
         self.cmd_tx
+            .as_ref()
+            .ok_or_else(|| "session worker is gone".to_string())?
             .send(Job::Connect { portal, password, openconnect_bin })
             .map_err(|e| format!("session worker is gone: {e}"))
     }
 
     pub fn disconnect(&self) {
-        let _ = self.cmd_tx.send(Job::Stop);
+        if let Some(tx) = &self.cmd_tx {
+            let _ = tx.send(Job::Stop);
+        }
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.disconnect();
+        // Drop the command channel FIRST: the worker only exits when all
+        // senders are gone, and joining while `cmd_tx` is still alive would
+        // deadlock (the worker would park on recv forever).
+        drop(self.cmd_tx.take());
         if let Some(w) = self.worker.take() {
             let _ = w.join();
         }
@@ -363,5 +370,19 @@ mod tests {
         assert!(is_auth_failure("Login failed"));
         assert!(is_auth_failure("HTTP 401"));
         assert!(!is_auth_failure("Connected as 10.0.0.1, using SSL"));
+    }
+
+    #[test]
+    fn session_drop_does_not_deadlock() {
+        // Dropping a Session closes the command channel and joins the worker;
+        // it must terminate promptly. A regression here hangs this test.
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+            drop(Session::spawn(event_tx).unwrap());
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("Session::drop deadlocked");
     }
 }
