@@ -355,12 +355,15 @@ impl GpConnect {
                     .map(|p| p.name.clone())
                     .unwrap_or_default();
                 ui.label(format!("Password for {portal}:"));
-                ui.add(egui::TextEdit::singleline(pw).password(true).desired_width(280.0));
+                let submit = ui
+                    .add(egui::TextEdit::singleline(pw).password(true).desired_width(280.0))
+                    .lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 ui.checkbox(remember, "Remember in system keyring");
                 ui.add_space(8.0);
                 let mut cancel = false;
                 ui.horizontal(|ui| {
-                    if ui.button("Connect").clicked() && !pw.is_empty() {
+                    if (ui.button("Connect").clicked() || submit) && !pw.is_empty() {
                         done = true;
                     }
                     if ui.button("Cancel").clicked() {

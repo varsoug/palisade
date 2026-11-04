@@ -46,6 +46,10 @@ rustPlatform.buildRustPackage rec {
     wrapProgram $out/bin/gpconnect \
       --prefix PATH : ${lib.makeBinPath [ openconnect ]} \
       --prefix LD_LIBRARY_PATH : $runtimeLibs
+
+    mkdir -p $out/share/applications
+    substitute ${./gpconnect.desktop} $out/share/applications/gpconnect.desktop \
+      --replace-fail @BIN@ $out/bin/gpconnect
   '';
 
   meta = {

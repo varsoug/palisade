@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=GPConnect
+Comment=Open-source GlobalProtect VPN client
+Exec=@BIN@
+Icon=network-vpn
+Terminal=false
+Categories=Network;VPN;
+Keywords=VPN;GlobalProtect;OpenConnect;
