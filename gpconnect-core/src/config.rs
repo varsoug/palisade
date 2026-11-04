@@ -70,8 +70,10 @@ impl AppConfig {
             return cfg;
         }
         // System-wide fallback (written by the NixOS module): only used when
-        // the user has no config of their own.
-        std::fs::read_to_string("/etc/gpconnect/config.json")
+        // the user has no config of their own. Overridable for tests.
+        let system_path = std::env::var("GPCONNECT_SYSTEM_CONFIG")
+            .unwrap_or_else(|_| "/etc/gpconnect/config.json".into());
+        std::fs::read_to_string(system_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default()
@@ -115,6 +117,15 @@ mod tests {
 
     #[test]
     fn defaults_when_missing() {
+        // Point XDG_CONFIG_HOME at an empty dir so the test is independent of
+        // the machine's real config (and of /etc/gpconnect provisioned by the
+        // NixOS module, which load() may legitimately pick up).
+        let tmp = std::env::temp_dir().join("gpconnect-test-empty-config");
+        std::fs::create_dir_all(&tmp).unwrap();
+        // SAFETY: tests run single-threaded per process; we only read the var
+        // inside AppConfig::load.
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", &tmp) };
+        unsafe { std::env::set_var("GPCONNECT_SYSTEM_CONFIG", tmp.join("nope.json")) };
         assert_eq!(AppConfig::load(), AppConfig::default());
     }
 }

@@ -147,7 +147,6 @@ impl eframe::App for GpConnect {
                     self.state_badge(ui);
                 });
             });
-            ui.label("Open-source GlobalProtect client (via OpenConnect)");
             ui.separator();
 
             if self.config.portals.is_empty() {
@@ -158,40 +157,85 @@ impl eframe::App for GpConnect {
                         self.editor = Some(PortalEditor::new());
                     }
                 });
-            } else {
-                self.portal_list(ui);
+                return;
             }
 
-            ui.separator();
+            // --- Status-first panel, modeled on the official client ---
 
-            // Connect / disconnect.
+            // "Connect to:" portal selector.
+            let mut selected = self.selected.unwrap_or(0);
+            let prev = selected;
+            egui::ComboBox::from_label("Connect to")
+                .selected_text(
+                    self.config
+                        .portals
+                        .get(selected)
+                        .map(|p| p.name.clone())
+                        .unwrap_or_default(),
+                )
+                .show_ui(ui, |ui| {
+                    for (idx, p) in self.config.portals.iter().enumerate() {
+                        ui.selectable_value(&mut selected, idx, &p.name);
+                    }
+                });
+            if selected != prev {
+                self.selected = Some(selected);
+            }
+
+            // Big connect/disconnect action.
             let busy = matches!(
                 self.state,
                 ConnState::Authenticating | ConnState::Connecting | ConnState::Connected(_)
             );
-            ui.horizontal(|ui| {
+            let button = egui::Button::new(if busy { "  Disconnect  " } else { "    Connect    " })
+                .min_size(egui::vec2(ui.available_width(), 36.0));
+            if ui.add(button).clicked() {
                 if busy {
-                    if ui.button("⏹ Disconnect").clicked() {
-                        self.session.disconnect();
-                    }
-                } else if ui.button("▶ Connect").clicked() {
-                    if let Some(idx) = self.selected {
-                        self.start_connect(idx);
+                    self.session.disconnect();
+                } else if let Some(idx) = self.selected {
+                    self.start_connect(idx);
+                }
+            }
+
+            // Status line (official client wording).
+            match &self.state {
+                ConnState::Disconnected => {
+                    ui.label("Not Connected");
+                }
+                ConnState::Authenticating => {
+                    ui.colored_label(egui::Color32::GOLD, "Authenticating…");
+                }
+                ConnState::Connecting => {
+                    ui.colored_label(egui::Color32::GOLD, "Connecting…");
+                }
+                ConnState::Connected(info) => {
+                    ui.colored_label(
+                        egui::Color32::LIGHT_GREEN,
+                        format!("Connected to {}", info.gateway),
+                    );
+                    if !info.ip.is_empty() {
+                        ui.label(format!("Tunnel IP: {}", info.ip));
                     }
                 }
-            });
-
+                ConnState::Error(e) => {
+                    ui.colored_label(ui.visuals().error_fg_color, format!("Error: {e}"));
+                }
+            }
             if let Some(msg) = &self.status_message {
                 ui.label(msg);
             }
-            if let ConnState::Error(e) = &self.state {
-                ui.colored_label(ui.visuals().error_fg_color, format!("Error: {e}"));
-            }
-            if let ConnState::Connected(info) = &self.state {
-                ui.label(format!("Connected via {} — tunnel IP {}", info.gateway, info.ip));
-            }
 
             ui.add_space(4.0);
+
+            // --- Secondary: portals, log, settings ---
+            ui.collapsing("Portals", |ui| {
+                self.portal_list(ui);
+                ui.horizontal(|ui| {
+                    if ui.button("➕ Add portal…").clicked() {
+                        self.editor = Some(PortalEditor::new());
+                    }
+                });
+            });
             self.log_view(ui);
 
             ui.separator();
@@ -210,12 +254,6 @@ impl eframe::App for GpConnect {
                 if settings != self.config.settings {
                     self.config.settings = settings;
                     self.save_config();
-                }
-            });
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::BOTTOM), |ui| {
-                if ui.button("➕ Add portal…").clicked() {
-                    self.editor = Some(PortalEditor::new());
                 }
             });
         });
