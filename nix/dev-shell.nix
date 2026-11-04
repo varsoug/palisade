@@ -10,7 +10,11 @@
 , libGL
 , libxkbcommon
 , wayland
-, xorg
+, libx11
+, libxcursor
+, libxrandr
+, libxi
+, libxext
 , openconnect
 }:
 
@@ -21,11 +25,11 @@ mkShell {
     libGL
     libxkbcommon
     wayland
-    xorg.libX11
-    xorg.libXcursor
-    xorg.libXrandr
-    xorg.libXi
-    xorg.libXext
+    libx11
+    libxcursor
+    libxrandr
+    libxi
+    libxext
   ];
 
   shellHook = ''

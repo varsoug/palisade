@@ -7,7 +7,11 @@
 , libGL
 , libxkbcommon
 , wayland
-, xorg
+, libx11
+, libxcursor
+, libxrandr
+, libxi
+, libxext
 , openconnect
 }:
 
@@ -31,11 +35,11 @@ rustPlatform.buildRustPackage rec {
     libGL
     libxkbcommon
     wayland
-    xorg.libX11
-    xorg.libXcursor
-    xorg.libXrandr
-    xorg.libXi
-    xorg.libXext
+    libx11
+    libxcursor
+    libxrandr
+    libxi
+    libxext
   ];
 
   postInstall = ''
