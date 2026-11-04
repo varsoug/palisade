@@ -326,14 +326,21 @@ impl GpConnect {
 
     fn log_view(&mut self, ui: &mut egui::Ui) {
         ui.collapsing("Log", |ui| {
+            // A read-only multiline TextEdit (not per-line labels) so the
+            // whole log can be selected with Ctrl+A and copied.
+            let start = self.logs.len().saturating_sub(SHOW_LOG_LINES * 4);
+            let text: String = self.logs.iter().skip(start).cloned().collect::<Vec<_>>().join("\n");
+            let mut text = text;
             egui::ScrollArea::vertical()
-                .stick_to_bottom(true)
+                .auto_shrink([false, false])
                 .max_height(180.0)
+                .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    let start = self.logs.len().saturating_sub(SHOW_LOG_LINES * 4);
-                    for line in self.logs.iter().skip(start) {
-                        ui.monospace(line);
-                    }
+                    ui.add(
+                        egui::TextEdit::multiline(&mut text)
+                            .font(egui::TextStyle::Monospace)
+                            .desired_width(f32::INFINITY),
+                    );
                 });
         });
     }

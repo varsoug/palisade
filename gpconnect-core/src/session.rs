@@ -176,6 +176,10 @@ fn spawn_openconnect(
 ) -> io::Result<Child> {
     let mut cmd = Command::new(bin);
     cmd.args(["--protocol=gp", "--non-inter"])
+        // Portals that reject unknown client OSes (this corp portal answers
+        // getconfig.esp with HTTP 512 for clientos=Linux) accept Windows;
+        // this mirrors the gpclient invocation that worked against it.
+        .arg("--os=win")
         .arg("--user")
         .arg(&portal.username)
         .stdin(std::process::Stdio::piped())
@@ -183,6 +187,16 @@ fn spawn_openconnect(
         .stderr(std::process::Stdio::piped())
         // Dropping the pump task (abort/replace) must kill openconnect.
         .kill_on_drop(true);
+
+    // HIP (host posture) report: if the package ships hipreport.sh next to
+    // the binary, submit it — portals that demand HIP fail auth without it.
+    let hip = bin
+        .parent()
+        .and_then(|d| d.parent().map(|p| p.join("libexec/openconnect/hipreport.sh")))
+        .filter(|p| p.exists());
+    if let Some(hip) = hip {
+        cmd.arg(format!("--csd-wrapper={}", hip.display()));
+    }
 
     match portal.auth {
         crate::AuthMode::Password => {
@@ -323,7 +337,7 @@ async fn read_lines(
 ) {
     let mut lines = BufReader::new(stream).lines();
     while let Ok(Some(line)) = lines.next_line().await {
-        tracing::debug!("openconnect: {line}");
+        tracing::info!("openconnect: {line}");
         let _ = events.send(ConnEvent::Log(line.clone()));
 
         let mut p = progress.lock().unwrap();
