@@ -158,9 +158,12 @@ async fn worker_loop(
                 let mut stdin = stdin_slot.lock().unwrap().take();
                 if let Some(stdin) = stdin.as_mut() {
                     use tokio::io::AsyncWriteExt;
-                    let _ = stdin.write_all(text.as_bytes()).await;
-                    let _ = stdin.write_all(b"\n").await;
-                    let _ = stdin.flush().await;
+                    let r = stdin.write_all(text.as_bytes()).await;
+                    let r2 = stdin.write_all(b"\n").await;
+                    let r3 = stdin.flush().await;
+                    tracing::info!("respond write: {r:?} {r2:?} {r3:?}");
+                } else {
+                    tracing::info!("respond: no stdin handle!");
                 }
                 *stdin_slot.lock().unwrap() = stdin;
             }
@@ -327,6 +330,12 @@ async fn pump_output(
     let connected = progress.lock().unwrap().connected;
 
     let status = child.wait().await.ok();
+    let mut taken = stdin_slot.lock().unwrap().take();
+    if let Some(stdin) = taken.as_mut() {
+        let _ = stdin.shutdown().await;
+    }
+    *stdin_slot.lock().unwrap() = taken;
+    tracing::info!("openconnect exited: {status:?}, connected={connected}");
 
     if connected {
         // Unexpected drop (not killed by us): maybe reconnect.

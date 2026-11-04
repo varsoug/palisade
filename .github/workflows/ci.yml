@@ -22,7 +22,7 @@ jobs:
       - run: cargo test
 
   nix:
-    name: nix build / module check
+    name: nix build / dev shell
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,18 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: Build package
         run: nix build --print-build-logs .#gpconnect
-      - name: Check NixOS module (type-check)
-        run: nix build --print-build-logs .#checks.x86_64-linux.module-eval
       - name: Verify dev shell
         run: nix develop --command cargo --version
+
+  # The module type-check evaluates a whole minimal NixOS system; keep it on
+  # main pushes only so PRs stay fast.
+  nix-module:
+    name: NixOS module type-check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Check NixOS module
+        run: nix build --print-build-logs .#checks.x86_64-linux.module-eval
