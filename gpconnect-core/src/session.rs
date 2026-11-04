@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -11,6 +10,15 @@ use tokio::task::JoinHandle;
 use crate::PortalConfig;
 
 pub const DEFAULT_OPENCONNECT_BIN: &str = "openconnect";
+
+/// Handle used to answer prompts (OTP challenge) by writing to openconnect's
+/// input. On Unix this is the PTY master; on Windows the piped stdin.
+#[cfg(unix)]
+type InputHandle = std::fs::File;
+#[cfg(windows)]
+type InputHandle = tokio::process::ChildStdin;
+
+type InputSlot = Arc<Mutex<Option<InputHandle>>>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnState {
@@ -42,7 +50,7 @@ pub enum ConnEvent {
 
 enum Job {
     Connect { portal: PortalConfig, password: Option<String>, openconnect_bin: PathBuf },
-    /// Write one response line (OTP challenge) to openconnect's stdin.
+    /// Write one response line (OTP challenge) to openconnect's input.
     Respond(String),
     /// Abort the running connection, if any.
     Stop,
@@ -63,10 +71,8 @@ impl Session {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<Job>();
         let state = Arc::new(Mutex::new(ConnState::Disconnected));
         let state2 = Arc::clone(&state);
-
-        let stdin_slot: Arc<Mutex<Option<tokio::process::ChildStdin>>> =
-            Arc::new(Mutex::new(None));
-        let stdin_slot2 = Arc::clone(&stdin_slot);
+        let input_slot: InputSlot = Arc::new(Mutex::new(None));
+        let input_slot2 = Arc::clone(&input_slot);
 
         let worker = std::thread::Builder::new()
             .name("gpconnect-session".into())
@@ -83,7 +89,7 @@ impl Session {
                         return;
                     }
                 };
-                rt.block_on(worker_loop(cmd_rx, event_tx, state2, stdin_slot2));
+                rt.block_on(worker_loop(cmd_rx, event_tx, state2, input_slot2));
             })?;
 
         Ok(Session { cmd_tx: Some(cmd_tx), worker: Some(worker), state })
@@ -108,7 +114,7 @@ impl Session {
             .map_err(|e| format!("session worker is gone: {e}"))
     }
 
-    /// Write one response line to openconnect's stdin (OTP challenge reply).
+    /// Write one response line to openconnect's input (OTP challenge reply).
     pub fn respond(&self, text: &str) -> Result<(), String> {
         self.cmd_tx
             .as_ref()
@@ -136,11 +142,40 @@ impl Drop for Session {
     }
 }
 
+#[cfg(unix)]
+fn write_input(slot: &InputSlot, text: &str) {
+    use std::io::Write;
+    let mut guard = slot.lock().unwrap();
+    if let Some(input) = guard.as_mut() {
+        let r = input.write_all(text.as_bytes());
+        let r2 = input.write_all(b"\n");
+        let r3 = input.flush();
+        tracing::info!("respond write: {r:?} {r2:?} {r3:?}");
+    } else {
+        tracing::info!("respond: no input handle!");
+    }
+}
+
+#[cfg(windows)]
+async fn write_input_async(slot: &InputSlot, text: &str) {
+    use tokio::io::AsyncWriteExt;
+    let mut taken = slot.lock().unwrap().take();
+    if let Some(input) = taken.as_mut() {
+        let r = input.write_all(text.as_bytes()).await;
+        let r2 = input.write_all(b"\n").await;
+        let r3 = input.flush().await;
+        tracing::info!("respond write: {r:?} {r2:?} {r3:?}");
+    } else {
+        tracing::info!("respond: no input handle!");
+    }
+    *slot.lock().unwrap() = taken;
+}
+
 async fn worker_loop(
     mut cmd_rx: mpsc::UnboundedReceiver<Job>,
     events: mpsc::UnboundedSender<ConnEvent>,
     state: Arc<Mutex<ConnState>>,
-    stdin_slot: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
+    input_slot: InputSlot,
 ) {
     let mut pump: Option<JoinHandle<()>> = None;
 
@@ -153,19 +188,10 @@ async fn worker_loop(
 
         match job {
             Job::Respond(text) => {
-                // Take the handle out so the mutex guard is never held
-                // across an await, then put it back.
-                let mut stdin = stdin_slot.lock().unwrap().take();
-                if let Some(stdin) = stdin.as_mut() {
-                    use tokio::io::AsyncWriteExt;
-                    let r = stdin.write_all(text.as_bytes()).await;
-                    let r2 = stdin.write_all(b"\n").await;
-                    let r3 = stdin.flush().await;
-                    tracing::info!("respond write: {r:?} {r2:?} {r3:?}");
-                } else {
-                    tracing::info!("respond: no stdin handle!");
-                }
-                *stdin_slot.lock().unwrap() = stdin;
+                #[cfg(unix)]
+                write_input(&input_slot, &text);
+                #[cfg(windows)]
+                write_input_async(&input_slot, &text).await;
             }
             Job::Stop => {
                 *state.lock().unwrap() = ConnState::Disconnected;
@@ -174,9 +200,9 @@ async fn worker_loop(
             Job::Connect { portal, password, openconnect_bin } => {
                 *state.lock().unwrap() = ConnState::Connecting;
                 let _ = events.send(ConnEvent::State(ConnState::Connecting));
-                let child = match spawn_openconnect(&portal, password.as_deref(), &openconnect_bin)
-                {
-                    Ok(c) => c,
+                let spawned = spawn_openconnect(&portal, password.as_deref(), &openconnect_bin);
+                let (child, input) = match spawned {
+                    Ok(v) => v,
                     Err(e) => {
                         let msg = if e.kind() == io::ErrorKind::NotFound {
                             format!(
@@ -192,9 +218,10 @@ async fn worker_loop(
                         continue;
                     }
                 };
+                *input_slot.lock().unwrap() = input;
                 let state2 = Arc::clone(&state);
                 let events2 = events.clone();
-                let stdin_slot2 = Arc::clone(&stdin_slot);
+                let input_slot2 = Arc::clone(&input_slot);
                 pump = Some(tokio::spawn(async move {
                     let _ = pump_output(
                         child,
@@ -203,7 +230,7 @@ async fn worker_loop(
                         state2,
                         password,
                         openconnect_bin,
-                        stdin_slot2,
+                        input_slot2,
                     )
                     .await;
                 }));
@@ -212,24 +239,22 @@ async fn worker_loop(
     }
 }
 
-fn spawn_openconnect(
-    portal: &PortalConfig,
-    password: Option<&str>,
-    bin: &PathBuf,
-) -> io::Result<Child> {
+/// Build the openconnect command line (shared between platforms).
+fn build_command(portal: &PortalConfig, bin: &PathBuf) -> io::Result<Command> {
     let mut cmd = Command::new(bin);
-    cmd.args(["--protocol=gp", "--non-inter"])
+    cmd.arg("--protocol=gp")
         // Portals that reject unknown client OSes (this corp portal answers
         // getconfig.esp with HTTP 512 for clientos=Linux) accept Windows;
         // this mirrors the gpclient invocation that worked against it.
         .arg("--os=win")
         .arg("--user")
         .arg(&portal.username)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
         // Dropping the pump task (abort/replace) must kill openconnect.
         .kill_on_drop(true);
+
+    if portal.auth == crate::AuthMode::Password && portal.username.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "username required"));
+    }
 
     // HIP (host posture) report: if the package ships hipreport.sh next to
     // the binary, submit it — portals that demand HIP fail auth without it.
@@ -242,24 +267,77 @@ fn spawn_openconnect(
     }
 
     match portal.auth {
-        crate::AuthMode::Password => {
-            if password.is_none() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "password auth requires a password",
-                ));
-            }
-            cmd.arg("--passwd-on-stdin");
-        }
         crate::AuthMode::Saml => {
             // OpenConnect runs a localhost redirect listener and asks this
             // command to open the SSO URL in the user's browser.
             cmd.arg(format!("--external-browser={}", browser_opener()));
         }
+        crate::AuthMode::Password => {}
     }
 
     cmd.arg(&portal.portal);
-    cmd.spawn()
+    Ok(cmd)
+}
+
+#[cfg(unix)]
+fn spawn_openconnect(
+    portal: &PortalConfig,
+    _password: Option<&str>,
+    bin: &PathBuf,
+) -> io::Result<(Child, Option<InputHandle>)> {
+    use nix::pty::openpty;
+    use std::os::unix::io::OwnedFd;
+
+    let mut cmd = build_command(portal, bin)?;
+
+    // OpenConnect answers follow-up prompts (OTP challenge) only when its
+    // stdin is a TTY, so run it on a PTY and service prompts ourselves via
+    // the PTY master. Both the password and challenge replies are written
+    // there.
+    let winsize = nix::pty::Winsize {
+        ws_row: 24,
+        ws_col: 120,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    let ends = openpty(Some(&winsize), None)?;
+    let master: OwnedFd = ends.master;
+    let slave: OwnedFd = ends.slave;
+
+    let slave_file = std::fs::File::from(slave);
+    use std::process::Stdio;
+    cmd.stdin(Stdio::from(slave_file.try_clone()?))
+        .stdout(Stdio::from(slave_file.try_clone()?))
+        .stderr(Stdio::from(slave_file));
+    // No --passwd-on-stdin / --non-inter here: prompts are answered over the
+    // PTY like a human would type them.
+    let child = cmd.spawn()?;
+    Ok((child, Some(std::fs::File::from(master))))
+}
+
+#[cfg(windows)]
+fn spawn_openconnect(
+    portal: &PortalConfig,
+    password: Option<&str>,
+    bin: &PathBuf,
+) -> io::Result<(Child, Option<InputHandle>)> {
+    let mut cmd = build_command(portal, bin)?;
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    if portal.auth == crate::AuthMode::Password {
+        if password.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "password auth requires a password",
+            ));
+        }
+        cmd.arg("--passwd-on-stdin").arg("--non-inter");
+    } else {
+        cmd.arg("--non-inter");
+    }
+    let mut child = cmd.spawn()?;
+    Ok((child, child.stdin.take()))
 }
 
 #[cfg(target_os = "windows")]
@@ -277,97 +355,53 @@ fn browser_opener() -> &'static str {
     "xdg-open"
 }
 
-/// Feed the password, translate openconnect output into state events, wait
-/// for exit. On unexpected exit with `reconnect_on_drop`, restart the child.
-async fn pump_output(
-    mut child: Child,
-    portal: PortalConfig,
-    events: mpsc::UnboundedSender<ConnEvent>,
-    state: Arc<Mutex<ConnState>>,
-    password: Option<String>,
-    bin: PathBuf,
-    stdin_slot: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
-) {
-    // Password first; stdin stays OPEN because the portal may follow up with
-    // an OTP challenge prompt that the user answers via Session::respond.
-    if portal.auth == crate::AuthMode::Password {
-        if let Some(mut stdin) = child.stdin.take() {
-            if let Some(pw) = &password {
-                let _ = stdin.write_all(pw.as_bytes()).await;
-                let _ = stdin.write_all(b"\n").await;
-                let _ = stdin.flush().await;
-            }
-            *stdin_slot.lock().unwrap() = Some(stdin);
-        }
-    }
-
-    let progress = Arc::new(Mutex::new(Progress {
-        connected: false,
-        info: TunnelInfo::default(),
-        stage: String::new(),
-        last_line: String::new(),
-        challenge_sent: false,
-    }));
-
-    let stderr = child.stderr.take();
-    let stdout = child.stdout.take();
-    let mut handles = Vec::new();
-    if let Some(s) = stderr {
-        let (events, progress, portal) = (events.clone(), Arc::clone(&progress), portal.portal.clone());
-        handles.push(tokio::spawn(async move {
-            read_lines(s, events, progress, portal).await;
-        }));
-    }
-    if let Some(s) = stdout {
-        let (events, progress, portal) = (events.clone(), Arc::clone(&progress), portal.portal.clone());
-        handles.push(tokio::spawn(async move {
-            read_lines(s, events, progress, portal).await;
-        }));
-    }
-    for h in handles {
-        let _ = h.await;
-    }
-    let connected = progress.lock().unwrap().connected;
-
-    let status = child.wait().await.ok();
-    let mut taken = stdin_slot.lock().unwrap().take();
-    if let Some(stdin) = taken.as_mut() {
-        let _ = stdin.shutdown().await;
-    }
-    *stdin_slot.lock().unwrap() = taken;
-    tracing::info!("openconnect exited: {status:?}, connected={connected}");
-
-    if connected {
-        // Unexpected drop (not killed by us): maybe reconnect.
-        let want_reconnect = crate::AppConfig::load().settings.reconnect_on_drop;
-        if want_reconnect {
-            let _ = events.send(ConnEvent::State(ConnState::Connecting));
-            *state.lock().unwrap() = ConnState::Connecting;
-            tokio::time::sleep(Duration::from_secs(3)).await;
-            if let Ok(new_child) = spawn_openconnect(&portal, password.as_deref(), &bin) {
-                Box::pin(pump_output(new_child, portal, events, state, password, bin, stdin_slot))
-                    .await;
-                return;
-            }
-        }
-        *state.lock().unwrap() = ConnState::Disconnected;
-        let _ = events.send(ConnEvent::State(ConnState::Disconnected));
-    } else {
-        let msg = format!(
-            "openconnect exited{}",
-            status.map(|s| format!(" with {s}")).unwrap_or_default()
-        );
-        *state.lock().unwrap() = ConnState::Error(msg.clone());
-        let _ = events.send(ConnEvent::State(ConnState::Error(msg)));
-    }
-}
-
 struct Progress {
     connected: bool,
     info: TunnelInfo,
     stage: String,
     last_line: String,
     challenge_sent: bool,
+}
+
+/// Translate one openconnect output line into state/stage/challenge events.
+fn process_line(
+    line: &str,
+    events: &mpsc::UnboundedSender<ConnEvent>,
+    progress: &Arc<Mutex<Progress>>,
+    portal: &str,
+) {
+    let mut p = progress.lock().unwrap();
+    if p.connected {
+        p.last_line = line.to_string();
+        return;
+    }
+    if line.contains("Connected as") {
+        p.connected = true;
+        p.info.ip = line
+            .split("Connected as")
+            .nth(1)
+            .and_then(|rest| rest.split(',').next())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        p.info.gateway = portal.to_string();
+        let _ = events.send(ConnEvent::State(ConnState::Connected(p.info.clone())));
+    } else {
+        if is_auth_failure(line) {
+            let _ = events.send(ConnEvent::State(ConnState::Error(
+                "authentication failed".into(),
+            )));
+        }
+        if let Some(stage) = stage_for_line(line, &p.stage) {
+            p.stage = stage.into();
+            let _ = events.send(ConnEvent::Stage(stage.into()));
+        }
+        if !p.challenge_sent && is_challenge_prompt(line) {
+            p.challenge_sent = true;
+            let msg = server_message(&p.last_line);
+            let _ = events.send(ConnEvent::Challenge(msg));
+        }
+    }
+    p.last_line = line.to_string();
 }
 
 /// Map an openconnect output line to a stage label in the official client's
@@ -384,50 +418,6 @@ fn stage_for_line(line: &str, current: &str) -> Option<&'static str> {
         return None;
     };
     if stage == current { None } else { Some(stage) }
-}
-
-async fn read_lines(
-    stream: impl tokio::io::AsyncRead + Unpin,
-    events: mpsc::UnboundedSender<ConnEvent>,
-    progress: Arc<Mutex<Progress>>,
-    portal: String,
-) {
-    let mut lines = BufReader::new(stream).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        tracing::info!("openconnect: {line}");
-        let _ = events.send(ConnEvent::Log(line.clone()));
-
-        let mut p = progress.lock().unwrap();
-        if !p.connected {
-            if line.contains("Connected as") {
-                p.connected = true;
-                p.info.ip = line
-                    .split("Connected as")
-                    .nth(1)
-                    .and_then(|rest| rest.split(',').next())
-                    .map(|s| s.trim().to_string())
-                    .unwrap_or_default();
-                p.info.gateway = portal.clone();
-                let _ = events.send(ConnEvent::State(ConnState::Connected(p.info.clone())));
-            } else {
-                if is_auth_failure(&line) {
-                    let _ = events.send(ConnEvent::State(ConnState::Error(
-                        "authentication failed".into(),
-                    )));
-                }
-                if let Some(stage) = stage_for_line(&line, &p.stage) {
-                    p.stage = stage.into();
-                    let _ = events.send(ConnEvent::Stage(stage.into()));
-                }
-                if !p.challenge_sent && is_challenge_prompt(&line) {
-                    p.challenge_sent = true;
-                    let msg = server_message(&p.last_line);
-                    let _ = events.send(ConnEvent::Challenge(msg));
-                }
-            }
-        }
-        p.last_line = line;
-    }
 }
 
 /// Does this openconnect line prompt for an OTP/challenge response?
@@ -459,6 +449,184 @@ fn is_auth_failure(line: &str) -> bool {
     ["authentication failure", "login failed", "bad credentials", "401", "authfailed"]
         .iter()
         .any(|p| l.contains(p))
+}
+
+/// Shared tail: wait for the child, then either reconnect or finalize state.
+#[allow(clippy::too_many_arguments)]
+async fn finish_child(
+    mut child: Child,
+    progress: Arc<Mutex<Progress>>,
+    portal: PortalConfig,
+    events: mpsc::UnboundedSender<ConnEvent>,
+    state: Arc<Mutex<ConnState>>,
+    password: Option<String>,
+    bin: PathBuf,
+    input_slot: InputSlot,
+) {
+    let status = child.wait().await.ok();
+    let connected = progress.lock().unwrap().connected;
+    *input_slot.lock().unwrap() = None;
+    tracing::info!("openconnect exited: {status:?}, connected={connected}");
+
+    if connected {
+        // Unexpected drop (not killed by us): maybe reconnect.
+        let want_reconnect = crate::AppConfig::load().settings.reconnect_on_drop;
+        if want_reconnect {
+            let _ = events.send(ConnEvent::State(ConnState::Connecting));
+            *state.lock().unwrap() = ConnState::Connecting;
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            if let Ok((new_child, input)) = spawn_openconnect(&portal, password.as_deref(), &bin)
+            {
+                *input_slot.lock().unwrap() = input;
+                Box::pin(pump_output(new_child, portal, events, state, password, bin, input_slot))
+                    .await;
+                return;
+            }
+        }
+        *state.lock().unwrap() = ConnState::Disconnected;
+        let _ = events.send(ConnEvent::State(ConnState::Disconnected));
+    } else {
+        let msg = format!(
+            "openconnect exited{}",
+            status.map(|s| format!(" with {s}")).unwrap_or_default()
+        );
+        *state.lock().unwrap() = ConnState::Error(msg.clone());
+        let _ = events.send(ConnEvent::State(ConnState::Error(msg)));
+    }
+}
+
+#[cfg(unix)]
+async fn pump_output(
+    child: Child,
+    portal: PortalConfig,
+    events: mpsc::UnboundedSender<ConnEvent>,
+    state: Arc<Mutex<ConnState>>,
+    password: Option<String>,
+    bin: PathBuf,
+    input_slot: InputSlot,
+) {
+    // The input handle (PTY master) sits in input_slot; take a writer clone.
+    let writer = {
+        let guard = input_slot.lock().unwrap();
+        guard.as_ref().and_then(|f| f.try_clone().ok())
+    };
+    let Some(writer) = writer else {
+        let _ = events.send(ConnEvent::State(ConnState::Error(
+            "no PTY master handle".into(),
+        )));
+        return;
+    };
+
+    // Feed the password through the PTY like a typed line.
+    if portal.auth == crate::AuthMode::Password {
+        if let Some(pw) = &password {
+            let mut w = writer;
+            let pw = pw.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                use std::io::Write;
+                let r = w.write_all(pw.as_bytes());
+                let r2 = w.write_all(b"\n");
+                let r3 = w.flush();
+                tracing::info!("password write: {r:?} {r2:?} {r3:?}");
+            })
+            .await;
+        }
+    }
+
+    let progress = Arc::new(Mutex::new(Progress {
+        connected: false,
+        info: TunnelInfo::default(),
+        stage: String::new(),
+        last_line: String::new(),
+        challenge_sent: false,
+    }));
+
+    // Reader: blocking loop on the PTY master; unbounded mpsc::Sender is
+    // usable from any thread, so parse lines right here.
+    let reader_handle = {
+        let events = events.clone();
+        let progress = Arc::clone(&progress);
+        let portal_name = portal.portal.clone();
+        let master = input_slot.lock().unwrap().as_ref().and_then(|f| f.try_clone().ok());
+        tokio::task::spawn_blocking(move || {
+            let Some(master) = master else { return };
+            use std::io::{BufRead, BufReader};
+            let mut reader = BufReader::new(master);
+            loop {
+                let mut raw = String::new();
+                match reader.read_line(&mut raw) {
+                    Ok(0) => break,          // EOF
+                    Ok(_) => {
+                        let line = raw.trim_end_matches(['\n', '\r']).to_string();
+                        if line.is_empty() {
+                            continue;
+                        }
+                        tracing::info!("openconnect: {line}");
+                        let _ = events.send(ConnEvent::Log(line.clone()));
+                        process_line(&line, &events, &progress, &portal_name);
+                    }
+                    Err(_) => break,         // EIO once the child is gone
+                }
+            }
+        })
+    };
+
+    let _ = reader_handle.await;
+    finish_child(child, progress, portal, events, state, password, bin, input_slot).await;
+}
+
+#[cfg(windows)]
+async fn pump_output(
+    mut child: Child,
+    portal: PortalConfig,
+    events: mpsc::UnboundedSender<ConnEvent>,
+    state: Arc<Mutex<ConnState>>,
+    password: Option<String>,
+    bin: PathBuf,
+    input_slot: InputSlot,
+) {
+    use tokio::io::AsyncWriteExt;
+
+    // Password via --passwd-on-stdin, then keep stdin open.
+    if portal.auth == crate::AuthMode::Password {
+        if let Some(mut input) = child.stdin.take() {
+            if let Some(pw) = &password {
+                let _ = input.write_all(pw.as_bytes()).await;
+                let _ = input.write_all(b"\n").await;
+                let _ = input.flush().await;
+            }
+            *input_slot.lock().unwrap() = Some(input);
+        }
+    }
+
+    let progress = Arc::new(Mutex::new(Progress {
+        connected: false,
+        info: TunnelInfo::default(),
+        stage: String::new(),
+        last_line: String::new(),
+        challenge_sent: false,
+    }));
+
+    use tokio::io::AsyncBufReadExt;
+    let stderr = child.stderr.take();
+    let stdout = child.stdout.take();
+    let mut handles = Vec::new();
+    for s in [stderr, stdout].into_iter().flatten() {
+        let (events, progress) = (events.clone(), Arc::clone(&progress));
+        let portal_name = portal.portal.clone();
+        handles.push(tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(s).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::info!("openconnect: {line}");
+                let _ = events.send(ConnEvent::Log(line.clone()));
+                process_line(&line, &events, &progress, &portal_name);
+            }
+        }));
+    }
+    for h in handles {
+        let _ = h.await;
+    }
+    finish_child(child, progress, portal, events, state, password, bin, input_slot).await;
 }
 
 #[cfg(test)]
