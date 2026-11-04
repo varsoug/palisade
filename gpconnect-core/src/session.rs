@@ -134,7 +134,15 @@ async fn worker_loop(
                 {
                     Ok(c) => c,
                     Err(e) => {
-                        let msg = format!("failed to start openconnect: {e}");
+                        let msg = if e.kind() == io::ErrorKind::NotFound {
+                            format!(
+                                "openconnect binary not found ({}) — install openconnect \
+                                 or set its path in Settings",
+                                openconnect_bin.display()
+                            )
+                        } else {
+                            format!("failed to start openconnect: {e}")
+                        };
                         *state.lock().unwrap() = ConnState::Error(msg.clone());
                         let _ = events.send(ConnEvent::State(ConnState::Error(msg)));
                         continue;

@@ -109,7 +109,7 @@ impl GpConnect {
         if portal.auth == AuthMode::Password {
             if let Some(pw) = get_password(&portal.portal, &portal.username) {
                 self.status_message = None;
-                let _ = self.session.connect(portal, Some(pw), None);
+                let _ = self.session.connect(portal, Some(pw), self.oc_bin());
                 return;
             }
             // Not in the keyring: prompt, with an option to store it.
@@ -118,7 +118,13 @@ impl GpConnect {
         }
 
         self.status_message = Some("Waiting for browser authentication…".into());
-        let _ = self.session.connect(portal, None, None);
+        let _ = self.session.connect(portal, None, self.oc_bin());
+    }
+
+    /// OpenConnect binary from settings (None = find `openconnect` on PATH).
+    fn oc_bin(&self) -> Option<std::path::PathBuf> {
+        let s = self.config.settings.openconnect_bin.trim();
+        if s.is_empty() { None } else { Some(std::path::PathBuf::from(s)) }
     }
 
     fn save_config(&mut self) {
@@ -193,6 +199,14 @@ impl eframe::App for GpConnect {
                 let mut settings = self.config.settings.clone();
                 ui.checkbox(&mut settings.reconnect_on_drop, "Reconnect on unexpected drop");
                 ui.checkbox(&mut settings.autostart, "Launch at login (best effort)");
+                ui.horizontal(|ui| {
+                    ui.label("openconnect binary:");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut settings.openconnect_bin)
+                            .desired_width(260.0)
+                            .hint_text("leave empty to find it on PATH"),
+                    );
+                });
                 if settings != self.config.settings {
                     self.config.settings = settings;
                     self.save_config();
@@ -316,7 +330,7 @@ impl GpConnect {
                     if remember {
                         let _ = store_password(&portal.portal, &portal.username, &pw);
                     }
-                    let _ = self.session.connect(portal, Some(pw), None);
+                    let _ = self.session.connect(portal, Some(pw), self.oc_bin());
                 }
             }
         }

@@ -31,11 +31,18 @@ pub struct Settings {
     pub reconnect_on_drop: bool,
     /// Start the GUI at login (best-effort per platform).
     pub autostart: bool,
+    /// OpenConnect binary to spawn. Empty string means "find `openconnect`
+    /// on PATH". The NixOS module sets this to a sudo wrapper.
+    pub openconnect_bin: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { reconnect_on_drop: true, autostart: false }
+        Self {
+            reconnect_on_drop: true,
+            autostart: false,
+            openconnect_bin: String::new(),
+        }
     }
 }
 
@@ -56,8 +63,15 @@ impl AppConfig {
     }
 
     pub fn load() -> Self {
-        let Some(path) = Self::config_path() else { return Self::default() };
-        std::fs::read_to_string(path)
+        let user = Self::config_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|s| serde_json::from_str(&s).ok());
+        if let Some(cfg) = user {
+            return cfg;
+        }
+        // System-wide fallback (written by the NixOS module): only used when
+        // the user has no config of their own.
+        std::fs::read_to_string("/etc/gpconnect/config.json")
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default()

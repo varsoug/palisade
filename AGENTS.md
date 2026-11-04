@@ -34,6 +34,13 @@ state machine, config, and the OS keyring.
 - `gpconnect-gui/` — egui binary (`gpconnect`): portal list editor, password
   prompt window, connect/disconnect, rolling log view, settings.
   `src/app.rs` holds all UI code.
+- `flake.nix`, `module.nix`, `shell.nix`, `nix/` — NixOS-first packaging:
+  `nix/package.nix` (buildRustPackage + wrapProgram: openconnect on PATH,
+  GL/Wayland/X11 runtime libs), `module.nix` (NixOS module:
+  `services.gpconnect.*` options; writes /etc/gpconnect/config.json, sudo
+  wrapper + NOPASSWD sudoers for openconnect, `tun` module, keyring),
+  `nix/dev-shell.nix` (verified dev environment), `shell.nix` (nix-shell alias).
+  Flakes only see git-tracked files — `git add` new Nix files before building.
 - `docs/protocol-notes.md` — REA-backed reverse-engineering notes from the
   official GlobalProtect 5.2.13-48 installers in `win_mac_binaries/` (kept
   out of git; `win_mac_binaries/re/` is the extraction scratch dir).
@@ -41,10 +48,19 @@ state machine, config, and the OS keyring.
 
 ## Build / test
 
-- Build: `cargo build` (no OpenConnect needed to build; needed at runtime).
-- Lint/fmt: `cargo clippy -D warnings`, `cargo fmt`. Keep both clean.
-- Tests: `cargo test` (unit tests in the crates; no integration tests yet —
-  real VPN connectivity is verified manually against a portal).
+Primary (Nix):
+
+- `nix develop` (or `nix-shell`) — dev environment with the pinned toolchain
+  deps; then `cargo build`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo fmt`, `cargo test`. Keep clippy and fmt clean.
+- `nix build` — package; `nix flake check` — package + NixOS module type-check.
+
+Plain cargo on non-Nix systems works too (needs a Rust toolchain and
+`dbus-1`/`openssl` dev packages for the keyring crate).
+
+Tests: `cargo test` (unit tests in the crates; no integration tests yet —
+real VPN connectivity is verified manually against a portal). On this host,
+the rustup binary does NOT run (NixOS); use the dev shell.
 
 ## Conventions and cautions
 
