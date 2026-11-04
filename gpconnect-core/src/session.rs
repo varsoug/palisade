@@ -56,7 +56,6 @@ pub struct Session {
     cmd_tx: Option<mpsc::UnboundedSender<Job>>,
     worker: Option<std::thread::JoinHandle<()>>,
     state: Arc<Mutex<ConnState>>,
-    stdin_slot: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
 }
 
 impl Session {
@@ -87,12 +86,7 @@ impl Session {
                 rt.block_on(worker_loop(cmd_rx, event_tx, state2, stdin_slot2));
             })?;
 
-        Ok(Session {
-            cmd_tx: Some(cmd_tx),
-            worker: Some(worker),
-            state,
-            stdin_slot,
-        })
+        Ok(Session { cmd_tx: Some(cmd_tx), worker: Some(worker), state })
     }
 
     pub fn state(&self) -> ConnState {
