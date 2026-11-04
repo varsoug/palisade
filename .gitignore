@@ -3,3 +3,4 @@ target/
 # Proprietary Palo Alto installers + extraction scratch — never commit.
 win_mac_binaries/
 result
+kimi-export-session_-*.md

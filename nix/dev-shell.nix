@@ -33,6 +33,6 @@ mkShell {
   ];
 
   shellHook = ''
-    echo "gpconnect dev shell — cargo build / cargo clippy --all-targets -- -D warnings / cargo test"
+    echo "palisade dev shell — cargo build / cargo clippy --all-targets -- -D warnings / cargo test"
   '';
 }

@@ -1,4 +1,4 @@
-//! GPConnect core: manages OpenConnect child processes that speak the
+//! Palisade core: manages OpenConnect child processes that speak the
 //! Palo Alto GlobalProtect protocol, plus config and credential storage.
 //!
 //! Secrets (VPN passwords) live only in the OS keyring, never on disk.
@@ -6,12 +6,12 @@
 mod config;
 mod session;
 
-pub use config::{AppConfig, AuthMode, PortalConfig, Settings};
+pub use config::{AppConfig, AuthMode, Backend, PortalConfig, Settings, Theme};
 pub use session::{ConnEvent, ConnState, Session, TunnelInfo, DEFAULT_OPENCONNECT_BIN};
 
 use keyring::Entry;
 
-const KEYRING_SERVICE: &str = "gpconnect";
+const KEYRING_SERVICE: &str = "palisade";
 
 /// Store a portal password in the OS keyring.
 pub fn store_password(portal: &str, username: &str, password: &str) -> Result<(), keyring::Error> {

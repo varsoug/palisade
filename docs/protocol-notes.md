@@ -72,7 +72,7 @@ Key request params observed:
 - `platform=windows` / `platform=mac`.
 - Registry/config root: `SOFTWARE\Palo Alto Networks\GlobalProtect\PanSetup`.
 
-## Behavior worth mimicking in GPConnect
+## Behavior worth mimicking in Palisade
 
 - SAML on Windows is done **inside the client** via an embedded IE
   WebBrowser control (`CPanSAMLView`), watching `saml-auth-status` values

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=GPConnect
+Name=Palisade
 Comment=Open-source GlobalProtect VPN client
 Exec=@BIN@
 Icon=network-vpn

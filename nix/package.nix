@@ -16,7 +16,7 @@
 }:
 
 rustPlatform.buildRustPackage rec {
-  pname = "gpconnect";
+  pname = "palisade";
   version = "0.1.0";
 
   src = lib.cleanSourceWith {
@@ -43,20 +43,20 @@ rustPlatform.buildRustPackage rec {
   ];
 
   postInstall = ''
-    wrapProgram $out/bin/gpconnect \
+    wrapProgram $out/bin/palisade \
       --prefix PATH : ${lib.makeBinPath [ openconnect ]} \
       --prefix LD_LIBRARY_PATH : $runtimeLibs
 
     mkdir -p $out/share/applications
-    substitute ${./gpconnect.desktop} $out/share/applications/gpconnect.desktop \
-      --replace-fail @BIN@ $out/bin/gpconnect
+    substitute ${./palisade.desktop} $out/share/applications/palisade.desktop \
+      --replace-fail @BIN@ $out/bin/palisade
   '';
 
   meta = {
     description = "Open-source GUI client for Palo Alto GlobalProtect VPN (wraps openconnect)";
-    homepage = "https://github.com/varsoug/GPConnect";
+    homepage = "https://github.com/varsoug/Palisade";
     license = lib.licenses.gpl3Plus;
-    mainProgram = "gpconnect";
+    mainProgram = "palisade";
     platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };
 }

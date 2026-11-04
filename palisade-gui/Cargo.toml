@@ -1,16 +1,16 @@
 [package]
-name = "gpconnect-gui"
+name = "palisade-gui"
 description = "Open-source GUI client for Palo Alto GlobalProtect VPN (wraps openconnect)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "gpconnect"
+name = "palisade"
 path = "src/main.rs"
 
 [dependencies]
-gpconnect-core = { path = "../gpconnect-core" }
+palisade-core = { path = "../palisade-core" }
 tokio = { version = "1", features = ["sync"] }
 egui = { version = "0.31", default-features = false, features = ["default_fonts"] }
 eframe = { version = "0.31", default-features = false, features = [
@@ -22,3 +22,9 @@ eframe = { version = "0.31", default-features = false, features = [
 ] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ksni = { version = "0.3", features = ["blocking"] }
+fs2 = "0.4.3"
+directories = "5"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

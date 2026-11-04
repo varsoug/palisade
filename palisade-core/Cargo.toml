@@ -1,6 +1,6 @@
 [package]
-name = "gpconnect-core"
-description = "Core session management for the GPConnect GlobalProtect GUI client (wraps openconnect)"
+name = "palisade-core"
+description = "Core session management for the Palisade GlobalProtect GUI client (wraps openconnect)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

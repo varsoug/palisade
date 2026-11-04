@@ -1,5 +1,5 @@
 {
-  description = "GPConnect — open-source GUI client for Palo Alto GlobalProtect VPN";
+  description = "Palisade — open-source GUI client for Palo Alto GlobalProtect VPN";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -12,8 +12,8 @@
       packages = forAllSystems (system:
         let pkgs = nixpkgs.legacyPackages.${system}; in
         {
-          default = self.packages.${system}.gpconnect;
-          gpconnect = pkgs.callPackage ./nix/package.nix { };
+          default = self.packages.${system}.palisade;
+          palisade = pkgs.callPackage ./nix/package.nix { };
         });
 
       devShells = forAllSystems (system:
@@ -22,8 +22,8 @@
           default = pkgs.callPackage ./nix/dev-shell.nix { };
         });
 
-      nixosModules.default = self.nixosModules.gpconnect;
-      nixosModules.gpconnect = import ./module.nix;
+      nixosModules.default = self.nixosModules.palisade;
+      nixosModules.palisade = import ./module.nix;
 
       checks = forAllSystems (system:
         let
@@ -34,12 +34,12 @@
           eval = nixpkgs.lib.nixosSystem {
             inherit system;
             modules = [
-              self.nixosModules.gpconnect
+              self.nixosModules.palisade
               {
                 boot.isContainer = true;
                 nixpkgs.hostPlatform = system;
                 system.stateVersion = "24.05";
-                services.gpconnect = {
+                services.palisade = {
                   enable = true;
                   allowedUsers = [ "tester" ];
                   portals = [
@@ -56,8 +56,8 @@
           };
         in
         {
-          inherit (self.packages.${system}) gpconnect;
-          module-eval = pkgs.runCommand "gpconnect-module-eval" { } ''
+          inherit (self.packages.${system}) palisade;
+          module-eval = pkgs.runCommand "palisade-module-eval" { } ''
             echo "${eval.config.system.build.toplevel.drvPath}" > "$out"
           '';
         });

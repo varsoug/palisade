@@ -1,7 +1,7 @@
 { config, lib, pkgs, ... }:
 
 let
-  cfg = config.services.gpconnect;
+  cfg = config.services.palisade;
 
   portalType = lib.types.submodule {
     options = {
@@ -31,12 +31,12 @@ let
 
   # Spawns openconnect through sudo so the app itself runs unprivileged.
   # Only installed/used when allowedUsers is non-empty.
-  sudoWrapper = pkgs.writeShellScriptBin "gpconnect-openconnect" ''
+  sudoWrapper = pkgs.writeShellScriptBin "palisade-openconnect" ''
     exec /run/wrappers/bin/sudo -n ${cfg.openconnectPackage}/bin/openconnect "$@"
   '';
 
   openconnectBin =
-    if cfg.allowedUsers != [] then "${sudoWrapper}/bin/gpconnect-openconnect" else "";
+    if cfg.allowedUsers != [] then "${sudoWrapper}/bin/palisade-openconnect" else "";
 
   appConfig = {
     portals = map (p: {
@@ -52,14 +52,14 @@ let
   };
 in
 {
-  options.services.gpconnect = {
-    enable = lib.mkEnableOption "GPConnect, an open-source GlobalProtect VPN GUI client";
+  options.services.palisade = {
+    enable = lib.mkEnableOption "Palisade, an open-source GlobalProtect VPN GUI client";
 
     package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.callPackage ./nix/package.nix { };
       defaultText = lib.literalExpression "pkgs.callPackage ./nix/package.nix { }";
-      description = "The gpconnect package to install.";
+      description = "The palisade package to install.";
     };
 
     openconnectPackage = lib.mkPackageOption pkgs "openconnect" { };
@@ -86,7 +86,7 @@ in
       default = [ ];
       description = ''
         Declaratively provisioned portals, written to
-        /etc/gpconnect/config.json. The app falls back to this file when the
+        /etc/palisade/config.json. The app falls back to this file when the
         user has no config of their own. Passwords are never stored here —
         they live in the login keyring only.
       '';
@@ -111,6 +111,6 @@ in
       ];
     }) cfg.allowedUsers;
 
-    environment.etc."gpconnect/config.json".text = builtins.toJSON appConfig;
+    environment.etc."palisade/config.json".text = builtins.toJSON appConfig;
   };
 }

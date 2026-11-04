@@ -1,12 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["gpconnect-core", "gpconnect-gui"]
+members = ["palisade-core", "palisade-gui"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-repository = "https://example.com/gpconnect"
+repository = "https://example.com/palisade"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
