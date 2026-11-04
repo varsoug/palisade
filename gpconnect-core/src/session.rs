@@ -32,6 +32,9 @@ pub enum ConnEvent {
     State(ConnState),
     /// One line of OpenConnect output (already trimmed), newest last.
     Log(String),
+    /// Connection stage in the official client's wording ("Retrieving
+    /// configuration…", "Authenticating…"), emitted while not connected.
+    Stage(String),
 }
 
 enum Job {
@@ -231,17 +234,31 @@ async fn pump_output(
         }
     }
 
-    let mut connected = false;
-    let mut info = TunnelInfo::default();
+    let progress = Arc::new(Mutex::new(Progress {
+        connected: false,
+        info: TunnelInfo::default(),
+        stage: String::new(),
+    }));
 
     let stderr = child.stderr.take();
     let stdout = child.stdout.take();
+    let mut handles = Vec::new();
     if let Some(s) = stderr {
-        read_lines(s, &events, &mut connected, &mut info, &portal.portal).await;
+        let (events, progress, portal) = (events.clone(), Arc::clone(&progress), portal.portal.clone());
+        handles.push(tokio::spawn(async move {
+            read_lines(s, events, progress, portal).await;
+        }));
     }
     if let Some(s) = stdout {
-        read_lines(s, &events, &mut connected, &mut info, &portal.portal).await;
+        let (events, progress, portal) = (events.clone(), Arc::clone(&progress), portal.portal.clone());
+        handles.push(tokio::spawn(async move {
+            read_lines(s, events, progress, portal).await;
+        }));
     }
+    for h in handles {
+        let _ = h.await;
+    }
+    let connected = progress.lock().unwrap().connected;
 
     let status = child.wait().await.ok();
 
@@ -269,33 +286,61 @@ async fn pump_output(
     }
 }
 
+struct Progress {
+    connected: bool,
+    info: TunnelInfo,
+    stage: String,
+}
+
+/// Map an openconnect output line to a stage label in the official client's
+/// wording. Returns None when nothing new to report.
+fn stage_for_line(line: &str, current: &str) -> Option<&'static str> {
+    let l = line.to_ascii_lowercase();
+    let stage = if l.contains("prelogin") || l.contains("saml") || is_auth_failure(&l) {
+        "Authenticating…"
+    } else if l.contains("getconfig") || l.contains("retrieving configuration") || l.contains("config") {
+        "Retrieving configuration…"
+    } else if l.contains("gateway") || l.contains("ssl-tunnel-connect") {
+        "Connecting…"
+    } else {
+        return None;
+    };
+    if stage == current { None } else { Some(stage) }
+}
+
 async fn read_lines(
     stream: impl tokio::io::AsyncRead + Unpin,
-    events: &mpsc::UnboundedSender<ConnEvent>,
-    connected: &mut bool,
-    info: &mut TunnelInfo,
-    portal: &str,
+    events: mpsc::UnboundedSender<ConnEvent>,
+    progress: Arc<Mutex<Progress>>,
+    portal: String,
 ) {
     let mut lines = BufReader::new(stream).lines();
     while let Ok(Some(line)) = lines.next_line().await {
         tracing::debug!("openconnect: {line}");
         let _ = events.send(ConnEvent::Log(line.clone()));
 
-        if !*connected {
+        let mut p = progress.lock().unwrap();
+        if !p.connected {
             if line.contains("Connected as") {
-                *connected = true;
-                info.ip = line
+                p.connected = true;
+                p.info.ip = line
                     .split("Connected as")
                     .nth(1)
                     .and_then(|rest| rest.split(',').next())
                     .map(|s| s.trim().to_string())
                     .unwrap_or_default();
-                info.gateway = portal.to_string();
-                let _ = events.send(ConnEvent::State(ConnState::Connected(info.clone())));
-            } else if is_auth_failure(&line) {
-                let _ = events.send(ConnEvent::State(ConnState::Error(
-                    "authentication failed".into(),
-                )));
+                p.info.gateway = portal.clone();
+                let _ = events.send(ConnEvent::State(ConnState::Connected(p.info.clone())));
+            } else {
+                if is_auth_failure(&line) {
+                    let _ = events.send(ConnEvent::State(ConnState::Error(
+                        "authentication failed".into(),
+                    )));
+                }
+                if let Some(stage) = stage_for_line(&line, &p.stage) {
+                    p.stage = stage.into();
+                    let _ = events.send(ConnEvent::Stage(stage.into()));
+                }
             }
         }
     }

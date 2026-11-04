@@ -15,6 +15,8 @@ pub struct GpConnect {
     state: ConnState,
     events: UnboundedReceiver<ConnEvent>,
     logs: VecDeque<String>,
+    /// Current connection stage ("Retrieving configuration…"), if any.
+    stage: Option<String>,
     /// Password prompt state: (portal index, entered password, remember flag).
     password_prompt: Option<(usize, String, bool)>,
     /// Editor state for adding a new portal.
@@ -80,6 +82,7 @@ impl GpConnect {
             state: ConnState::Disconnected,
             events,
             logs: VecDeque::new(),
+            stage: None,
             password_prompt: None,
             editor: None,
             selected,
@@ -90,7 +93,11 @@ impl GpConnect {
     fn drain_events(&mut self) {
         while let Ok(ev) = self.events.try_recv() {
             match ev {
-                ConnEvent::State(s) => self.state = s,
+                ConnEvent::State(s) => {
+                    self.stage = None;
+                    self.state = s;
+                }
+                ConnEvent::Stage(s) => self.stage = Some(s),
                 ConnEvent::Log(l) => {
                     self.logs.push_back(l);
                     while self.logs.len() > MAX_LOG_LINES {
@@ -220,6 +227,9 @@ impl eframe::App for GpConnect {
                 ConnState::Error(e) => {
                     ui.colored_label(ui.visuals().error_fg_color, format!("Error: {e}"));
                 }
+            }
+            if let Some(stage) = &self.stage {
+                ui.label(stage);
             }
             if let Some(msg) = &self.status_message {
                 ui.label(msg);
