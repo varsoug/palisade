@@ -2,3 +2,4 @@ target/
 **/*.rs.bk
 # Proprietary Palo Alto installers + extraction scratch — never commit.
 win_mac_binaries/
+result
