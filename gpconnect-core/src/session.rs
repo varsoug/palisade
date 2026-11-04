@@ -35,10 +35,15 @@ pub enum ConnEvent {
     /// Connection stage in the official client's wording ("Retrieving
     /// configuration…", "Authenticating…"), emitted while not connected.
     Stage(String),
+    /// The portal asks for a one-time code; the GUI should prompt and call
+    /// `Session::respond`. Carries the portal's instruction text.
+    Challenge(String),
 }
 
 enum Job {
     Connect { portal: PortalConfig, password: Option<String>, openconnect_bin: PathBuf },
+    /// Write one response line (OTP challenge) to openconnect's stdin.
+    Respond(String),
     /// Abort the running connection, if any.
     Stop,
 }
@@ -51,6 +56,7 @@ pub struct Session {
     cmd_tx: Option<mpsc::UnboundedSender<Job>>,
     worker: Option<std::thread::JoinHandle<()>>,
     state: Arc<Mutex<ConnState>>,
+    stdin_slot: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
 }
 
 impl Session {
@@ -58,6 +64,10 @@ impl Session {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<Job>();
         let state = Arc::new(Mutex::new(ConnState::Disconnected));
         let state2 = Arc::clone(&state);
+
+        let stdin_slot: Arc<Mutex<Option<tokio::process::ChildStdin>>> =
+            Arc::new(Mutex::new(None));
+        let stdin_slot2 = Arc::clone(&stdin_slot);
 
         let worker = std::thread::Builder::new()
             .name("gpconnect-session".into())
@@ -74,10 +84,15 @@ impl Session {
                         return;
                     }
                 };
-                rt.block_on(worker_loop(cmd_rx, event_tx, state2));
+                rt.block_on(worker_loop(cmd_rx, event_tx, state2, stdin_slot2));
             })?;
 
-        Ok(Session { cmd_tx: Some(cmd_tx), worker: Some(worker), state })
+        Ok(Session {
+            cmd_tx: Some(cmd_tx),
+            worker: Some(worker),
+            state,
+            stdin_slot,
+        })
     }
 
     pub fn state(&self) -> ConnState {
@@ -96,6 +111,15 @@ impl Session {
             .as_ref()
             .ok_or_else(|| "session worker is gone".to_string())?
             .send(Job::Connect { portal, password, openconnect_bin })
+            .map_err(|e| format!("session worker is gone: {e}"))
+    }
+
+    /// Write one response line to openconnect's stdin (OTP challenge reply).
+    pub fn respond(&self, text: &str) -> Result<(), String> {
+        self.cmd_tx
+            .as_ref()
+            .ok_or_else(|| "session worker is gone".to_string())?
+            .send(Job::Respond(text.to_string()))
             .map_err(|e| format!("session worker is gone: {e}"))
     }
 
@@ -122,6 +146,7 @@ async fn worker_loop(
     mut cmd_rx: mpsc::UnboundedReceiver<Job>,
     events: mpsc::UnboundedSender<ConnEvent>,
     state: Arc<Mutex<ConnState>>,
+    stdin_slot: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
 ) {
     let mut pump: Option<JoinHandle<()>> = None;
 
@@ -133,6 +158,18 @@ async fn worker_loop(
         }
 
         match job {
+            Job::Respond(text) => {
+                // Take the handle out so the mutex guard is never held
+                // across an await, then put it back.
+                let mut stdin = stdin_slot.lock().unwrap().take();
+                if let Some(stdin) = stdin.as_mut() {
+                    use tokio::io::AsyncWriteExt;
+                    let _ = stdin.write_all(text.as_bytes()).await;
+                    let _ = stdin.write_all(b"\n").await;
+                    let _ = stdin.flush().await;
+                }
+                *stdin_slot.lock().unwrap() = stdin;
+            }
             Job::Stop => {
                 *state.lock().unwrap() = ConnState::Disconnected;
                 let _ = events.send(ConnEvent::State(ConnState::Disconnected));
@@ -160,9 +197,18 @@ async fn worker_loop(
                 };
                 let state2 = Arc::clone(&state);
                 let events2 = events.clone();
+                let stdin_slot2 = Arc::clone(&stdin_slot);
                 pump = Some(tokio::spawn(async move {
-                    let _ = pump_output(child, portal, events2, state2, password, openconnect_bin)
-                        .await;
+                    let _ = pump_output(
+                        child,
+                        portal,
+                        events2,
+                        state2,
+                        password,
+                        openconnect_bin,
+                        stdin_slot2,
+                    )
+                    .await;
                 }));
             }
         }
@@ -243,15 +289,18 @@ async fn pump_output(
     state: Arc<Mutex<ConnState>>,
     password: Option<String>,
     bin: PathBuf,
+    stdin_slot: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
 ) {
-    // Password first, then close stdin so openconnect doesn't block on it.
+    // Password first; stdin stays OPEN because the portal may follow up with
+    // an OTP challenge prompt that the user answers via Session::respond.
     if portal.auth == crate::AuthMode::Password {
         if let Some(mut stdin) = child.stdin.take() {
             if let Some(pw) = &password {
                 let _ = stdin.write_all(pw.as_bytes()).await;
                 let _ = stdin.write_all(b"\n").await;
+                let _ = stdin.flush().await;
             }
-            let _ = stdin.shutdown().await;
+            *stdin_slot.lock().unwrap() = Some(stdin);
         }
     }
 
@@ -259,6 +308,8 @@ async fn pump_output(
         connected: false,
         info: TunnelInfo::default(),
         stage: String::new(),
+        last_line: String::new(),
+        challenge_sent: false,
     }));
 
     let stderr = child.stderr.take();
@@ -291,7 +342,8 @@ async fn pump_output(
             *state.lock().unwrap() = ConnState::Connecting;
             tokio::time::sleep(Duration::from_secs(3)).await;
             if let Ok(new_child) = spawn_openconnect(&portal, password.as_deref(), &bin) {
-                Box::pin(pump_output(new_child, portal, events, state, password, bin)).await;
+                Box::pin(pump_output(new_child, portal, events, state, password, bin, stdin_slot))
+                    .await;
                 return;
             }
         }
@@ -311,6 +363,8 @@ struct Progress {
     connected: bool,
     info: TunnelInfo,
     stage: String,
+    last_line: String,
+    challenge_sent: bool,
 }
 
 /// Map an openconnect output line to a stage label in the official client's
@@ -362,8 +416,38 @@ async fn read_lines(
                     p.stage = stage.into();
                     let _ = events.send(ConnEvent::Stage(stage.into()));
                 }
+                if !p.challenge_sent && is_challenge_prompt(&line) {
+                    p.challenge_sent = true;
+                    let msg = server_message(&p.last_line);
+                    let _ = events.send(ConnEvent::Challenge(msg));
+                }
             }
         }
+        p.last_line = line;
+    }
+}
+
+/// Does this openconnect line prompt for an OTP/challenge response?
+fn is_challenge_prompt(line: &str) -> bool {
+    let l = line.to_ascii_lowercase();
+    ["challenge", "one-time", "verification code", "otp", "одноразов"]
+        .iter()
+        .any(|p| l.contains(p))
+}
+
+/// The portal's human instruction usually precedes the "Challenge:" line.
+fn server_message(last_line: &str) -> String {
+    let l = last_line.to_ascii_lowercase();
+    let looks_internal = [
+        "post ", "get ", "connected", "ssl", "http", "prelogin", "getconfig",
+        "challenge", "password", "user", "openconnect", "tunnel", "gateway",
+    ]
+    .iter()
+    .any(|p| l.contains(p));
+    if last_line.trim().is_empty() || looks_internal {
+        "Enter the one-time code".into()
+    } else {
+        last_line.trim().to_string()
     }
 }
 
@@ -384,6 +468,15 @@ mod tests {
         assert!(is_auth_failure("Login failed"));
         assert!(is_auth_failure("HTTP 401"));
         assert!(!is_auth_failure("Connected as 10.0.0.1, using SSL"));
+    }
+
+    #[test]
+    fn challenge_detection() {
+        assert!(is_challenge_prompt("Challenge: "));
+        assert!(is_challenge_prompt("Введите одноразовый пароль"));
+        assert!(!is_challenge_prompt("Connected as 10.0.0.1"));
+        assert_eq!(server_message("Введите одноразовый пароль из приложения."), "Введите одноразовый пароль из приложения.");
+        assert_eq!(server_message("POST https://x/prelogin.esp"), "Enter the one-time code");
     }
 
     #[test]

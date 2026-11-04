@@ -19,6 +19,8 @@ pub struct GpConnect {
     stage: Option<String>,
     /// Password prompt state: (portal index, entered password, remember flag).
     password_prompt: Option<(usize, String, bool)>,
+    /// OTP challenge prompt state: (message, entered code).
+    challenge_prompt: Option<(String, String)>,
     /// Editor state for adding a new portal.
     editor: Option<PortalEditor>,
     selected: Option<usize>,
@@ -84,6 +86,7 @@ impl GpConnect {
             logs: VecDeque::new(),
             stage: None,
             password_prompt: None,
+            challenge_prompt: None,
             editor: None,
             selected,
             status_message: None,
@@ -98,6 +101,11 @@ impl GpConnect {
                     self.state = s;
                 }
                 ConnEvent::Stage(s) => self.stage = Some(s),
+                ConnEvent::Challenge(msg) => {
+                    if self.challenge_prompt.is_none() {
+                        self.challenge_prompt = Some((msg, String::new()));
+                    }
+                }
                 ConnEvent::Log(l) => {
                     self.logs.push_back(l);
                     while self.logs.len() > MAX_LOG_LINES {
@@ -232,7 +240,7 @@ impl eframe::App for GpConnect {
                 ui.label(stage);
             }
             if let Some(msg) = &self.status_message {
-                ui.label(msg);
+                ui.label(msg.as_str());
             }
 
             ui.add_space(4.0);
@@ -269,6 +277,7 @@ impl eframe::App for GpConnect {
         });
 
         self.password_window(ctx);
+        self.challenge_window(ctx);
         self.editor_window(ctx);
     }
 }
@@ -394,6 +403,40 @@ impl GpConnect {
         }
         if !open {
             self.password_prompt = None;
+        }
+    }
+
+    fn challenge_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.challenge_prompt.is_some();
+        let mut submit = false;
+
+        egui::Window::new("Verification code")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                let Some((msg, code)) = &mut self.challenge_prompt else { return };
+                ui.label(msg.as_str());
+                let enter = ui
+                    .add(egui::TextEdit::singleline(code).desired_width(200.0))
+                    .lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if enter {
+                    submit = true;
+                }
+                ui.add_space(8.0);
+                if ui.button("OK").clicked() && !code.is_empty() {
+                    submit = true;
+                }
+            });
+
+        if submit {
+            if let Some((_, code)) = self.challenge_prompt.take() {
+                let _ = self.session.respond(&code);
+            }
+        }
+        if !open {
+            self.challenge_prompt = None;
         }
     }
 
