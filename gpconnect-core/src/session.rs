@@ -304,6 +304,13 @@ fn spawn_openconnect(
     let master: OwnedFd = ends.master;
     let slave: OwnedFd = ends.slave;
 
+    // Disable terminal echo BEFORE the child starts: otherwise our password
+    // write races openconnect's own echo-off and the secret is echoed into
+    // the (logged) output stream.
+    let mut term = nix::sys::termios::tcgetattr(&slave)?;
+    term.local_flags.remove(nix::sys::termios::LocalFlags::ECHO);
+    nix::sys::termios::tcsetattr(&slave, nix::sys::termios::SetArg::TCSANOW, &term)?;
+
     let slave_file = std::fs::File::from(slave);
     use std::process::Stdio;
     cmd.stdin(Stdio::from(slave_file.try_clone()?))
@@ -555,7 +562,10 @@ async fn pump_output(
             loop {
                 let mut raw = String::new();
                 match reader.read_line(&mut raw) {
-                    Ok(0) => break,          // EOF
+                    Ok(0) => {
+                        tracing::info!("pty reader: EOF");
+                        break;
+                    }
                     Ok(_) => {
                         let line = raw.trim_end_matches(['\n', '\r']).to_string();
                         if line.is_empty() {
@@ -565,7 +575,10 @@ async fn pump_output(
                         let _ = events.send(ConnEvent::Log(line.clone()));
                         process_line(&line, &events, &progress, &portal_name);
                     }
-                    Err(_) => break,         // EIO once the child is gone
+                    Err(e) => {
+                        tracing::info!("pty reader: {e}");
+                        break;
+                    }
                 }
             }
         })
