@@ -73,8 +73,18 @@ pub struct GpConnect {
     hidden_to_tray: bool,
     /// Set by the Quit tray action: close for real even with close-to-tray on.
     quitting: bool,
+    /// Active bottom tab (replaces the collapsing sections). None means all
+    /// tabs are closed and only the status box is visible.
+    tab: Option<Tab>,
     /// "Connect at login" fires once per process.
     startup_connect_done: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tab {
+    Portals,
+    Log,
+    Settings,
 }
 
 struct PortalEditor {
@@ -147,6 +157,7 @@ impl GpConnect {
             tray: crate::tray::TrayHandle::start(),
             hidden_to_tray: false,
             quitting: false,
+            tab: None,
             startup_connect_done: false,
         }
     }
@@ -209,12 +220,21 @@ impl GpConnect {
         if ctx.style().visuals.dark_mode != want_dark {
             ctx.set_theme(chosen);
         }
+        // Match the reference palette: primary blue for the main action, soft
+        // panel background, thin borders. Applied every frame is cheap and
+        // keeps the visuals consistent after a theme flip.
+        ctx.style_mut(|style| {
+            style.visuals.widgets.active.bg_fill = primary_blue();
+            style.visuals.widgets.active.fg_stroke.color = egui::Color32::WHITE;
+            style.visuals.selection.bg_fill = primary_blue();
+        });
     }
 
     /// Apply actions requested from the tray menu.
     fn handle_tray(&mut self, ctx: &egui::Context) {
         let Some(tray) = &self.tray else { return };
-        tray.set_state(crate::tray::TrayState::from_conn(&self.state));
+        let dark = ctx.style().visuals.dark_mode;
+        tray.set_state(crate::tray::TrayState::from_conn(&self.state), dark);
         for action in tray.take_actions() {
             use crate::tray::TrayAction;
             match action {
@@ -328,21 +348,13 @@ impl eframe::App for GpConnect {
         }
         self.drain_events();
         self.maybe_connect_at_startup();
-        self.handle_tray(ctx);
+        // Apply the theme first: the tray reads dark_mode from ctx.style().
         self.apply_theme(ctx);
+        self.handle_tray(ctx);
         self.handle_close_request(ctx);
         ctx.request_repaint_after(std::time::Duration::from_millis(500));
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.heading("Palisade");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.state_badge(ui);
-                });
-            });
-            ui.separator();
-
             if self.config.portals.is_empty() {
                 ui.add_space(24.0);
                 ui.vertical_centered(|ui| {
@@ -381,12 +393,11 @@ impl eframe::App for GpConnect {
                 self.state,
                 ConnState::Authenticating | ConnState::Connecting | ConnState::Connected(_)
             );
-            let button = egui::Button::new(if busy {
-                "  Disconnect  "
-            } else {
-                "    Connect    "
-            })
-            .min_size(egui::vec2(ui.available_width(), 36.0));
+            let text = if busy { "Disconnect" } else { "Connect" };
+            let button = egui::Button::new(egui::RichText::new(text).size(15.0))
+                .fill(primary_blue())
+                .corner_radius(4.0)
+                .min_size(egui::vec2(ui.available_width(), 36.0));
             if ui.add(button).clicked() {
                 if busy {
                     self.session.disconnect();
@@ -395,28 +406,76 @@ impl eframe::App for GpConnect {
                 }
             }
 
-            // Status line (official client wording).
-            let color = status_color(ui, &self.state);
-            match &self.state {
+            // Status box: centered dot + title + subline, as in the reference.
+            let (dot_color, title) = match &self.state {
                 ConnState::Disconnected => {
-                    ui.label("Not Connected");
+                    (egui::Color32::from_rgb(0x8a, 0x8a, 0x8a), "Not Connected")
                 }
                 ConnState::Authenticating => {
-                    ui.colored_label(color, "Authenticating…");
+                    (egui::Color32::from_rgb(0xc8, 0x87, 0x1a), "Authenticating…")
                 }
-                ConnState::Connecting => {
-                    ui.colored_label(color, "Connecting…");
-                }
+                ConnState::Connecting => (egui::Color32::from_rgb(0xc8, 0x87, 0x1a), "Connecting…"),
+                ConnState::Connected(_) => (egui::Color32::from_rgb(0x2e, 0x8b, 0x3d), "Connected"),
+                ConnState::Error(_) => (egui::Color32::from_rgb(0xc0, 0x39, 0x2b), "Error"),
+            };
+            let subline = match &self.state {
+                ConnState::Disconnected => "Select a portal and press Connect".to_string(),
+                ConnState::Authenticating | ConnState::Connecting => self
+                    .stage
+                    .clone()
+                    .unwrap_or_else(|| "Checking credentials".into()),
                 ConnState::Connected(info) => {
-                    ui.colored_label(color, format!("Connected to {}", info.gateway));
-                    if !info.ip.is_empty() {
-                        ui.label(format!("Tunnel IP: {}", info.ip));
+                    if info.ip.is_empty() {
+                        info.gateway.clone()
+                    } else {
+                        format!("{} · {}", info.gateway, info.ip)
                     }
                 }
-                ConnState::Error(e) => {
-                    ui.colored_label(color, format!("Error: {e}"));
-                }
-            }
+                ConnState::Error(e) => e.clone(),
+            };
+            let panel_bg = if ui.visuals().dark_mode {
+                egui::Color32::from_rgb(0x2a, 0x2a, 0x2a)
+            } else {
+                egui::Color32::from_rgb(0xe9, 0xe9, 0xe9)
+            };
+            let panel_border = if ui.visuals().dark_mode {
+                egui::Color32::from_rgb(0x45, 0x45, 0x45)
+            } else {
+                egui::Color32::from_rgb(0xd2, 0xd2, 0xd2)
+            };
+            egui::Frame::NONE
+                .fill(panel_bg)
+                .stroke(egui::Stroke::new(1.0_f32, panel_border))
+                .corner_radius(6.0)
+                .inner_margin(egui::Margin::symmetric(16, 16))
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.horizontal(|ui| {
+                            let (rect, _) = ui
+                                .allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                            ui.painter().circle_filled(rect.center(), 6.0, dot_color);
+                            let title_color = if ui.visuals().dark_mode {
+                                egui::Color32::from_rgb(0xf0, 0xf0, 0xf0)
+                            } else {
+                                egui::Color32::from_rgb(0x1f, 0x1f, 0x1f)
+                            };
+                            ui.label(
+                                egui::RichText::new(title)
+                                    .size(16.0)
+                                    .strong()
+                                    .color(title_color),
+                            );
+                        });
+                        ui.add_space(6.0);
+                        let sub_color = if ui.visuals().dark_mode {
+                            egui::Color32::from_rgb(0xa0, 0xa0, 0xa0)
+                        } else {
+                            egui::Color32::from_rgb(0x6a, 0x6a, 0x6a)
+                        };
+                        ui.colored_label(sub_color, subline);
+                    });
+                });
+            ui.add_space(8.0);
             if let Some(stage) = &self.stage {
                 ui.label(stage);
             }
@@ -426,19 +485,40 @@ impl eframe::App for GpConnect {
 
             ui.add_space(4.0);
 
-            // --- Secondary: portals, log, settings ---
-            ui.collapsing("Portals", |ui| {
-                self.portal_list(ui);
-                ui.horizontal(|ui| {
+            // --- Tab bar at the top, content below ---
+            let spacing = ui.spacing().item_spacing.x;
+            let tab_w = (ui.available_width() - spacing * 2.0) / 3.0;
+            ui.horizontal(|ui| {
+                for (tab, label) in [
+                    (Tab::Portals, "Portals"),
+                    (Tab::Log, "Log"),
+                    (Tab::Settings, "Settings"),
+                ] {
+                    let selected = self.tab == Some(tab);
+                    let btn = egui::Button::new(label)
+                        .min_size(egui::vec2(tab_w, 26.0))
+                        .fill(if selected {
+                            primary_blue()
+                        } else {
+                            ui.visuals().widgets.inactive.bg_fill
+                        });
+                    if ui.add(btn).clicked() {
+                        self.tab = if selected { None } else { Some(tab) };
+                    }
+                }
+            });
+            ui.separator();
+            match self.tab {
+                Some(Tab::Portals) => {
+                    self.portal_list(ui);
                     if ui.button("➕ Add portal…").clicked() {
                         self.editor = Some(PortalEditor::new());
                     }
-                });
-            });
-            self.log_view(ui);
-
-            ui.separator();
-            ui.collapsing("Settings", |ui| {
+                }
+                Some(Tab::Log) => self.log_view(ui),
+                Some(Tab::Settings) | None => {}
+            }
+            if self.tab == Some(Tab::Settings) {
                 let mut settings = self.config.settings.clone();
                 // The autostart entry is the source of truth: if it was removed
                 // outside the app (or never written), the checkbox must not
@@ -474,7 +554,7 @@ impl eframe::App for GpConnect {
                     ui.label("openconnect binary:");
                     ui.add(
                         egui::TextEdit::singleline(&mut settings.openconnect_bin)
-                            .desired_width(260.0)
+                            .desired_width(ui.available_width())
                             .hint_text("leave empty to find it on PATH"),
                     );
                 });
@@ -482,7 +562,7 @@ impl eframe::App for GpConnect {
                     ui.label("gpclient binary:");
                     ui.add(
                         egui::TextEdit::singleline(&mut settings.gpclient_bin)
-                            .desired_width(260.0)
+                            .desired_width(ui.available_width())
                             .hint_text("leave empty to find it on PATH"),
                     );
                 });
@@ -498,7 +578,7 @@ impl eframe::App for GpConnect {
                         }
                     }
                 }
-            });
+            }
         });
 
         self.password_window(ctx);
@@ -514,47 +594,12 @@ impl eframe::App for GpConnect {
     }
 }
 
-/// Status colours that stay readable on both themes.
-///
-/// Hard-coded `GOLD` / `LIGHT_GREEN` wash out on a light background, so pick
-/// darker variants there. The error colour comes from the theme and fits both.
-fn status_color(ui: &egui::Ui, state: &ConnState) -> egui::Color32 {
-    let dark = ui.visuals().dark_mode;
-    match state {
-        ConnState::Disconnected => ui.visuals().weak_text_color(),
-        ConnState::Authenticating | ConnState::Connecting => {
-            if dark {
-                egui::Color32::GOLD
-            } else {
-                // Amber 800: readable on white, still reads as "pending".
-                egui::Color32::from_rgb(0xb0, 0x6a, 0x00)
-            }
-        }
-        ConnState::Connected(_) => {
-            if dark {
-                egui::Color32::LIGHT_GREEN
-            } else {
-                // Green 800.
-                egui::Color32::from_rgb(0x1b, 0x5e, 0x20)
-            }
-        }
-        ConnState::Error(_) => ui.visuals().error_fg_color,
-    }
+/// The reference design's primary blue (buttons and selection).
+fn primary_blue() -> egui::Color32 {
+    egui::Color32::from_rgb(0x34, 0x65, 0xa4)
 }
 
 impl GpConnect {
-    fn state_badge(&self, ui: &mut egui::Ui) {
-        let text = match &self.state {
-            ConnState::Disconnected => "Disconnected",
-            ConnState::Authenticating => "Authenticating…",
-            ConnState::Connecting => "Connecting…",
-            ConnState::Connected(_) => "Connected",
-            ConnState::Error(_) => "Error",
-        };
-        let color = status_color(ui, &self.state);
-        ui.colored_label(color, text);
-    }
-
     fn portal_list(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical()
             .max_height(140.0)
@@ -597,7 +642,7 @@ impl GpConnect {
     }
 
     fn log_view(&mut self, ui: &mut egui::Ui) {
-        ui.collapsing("Log", |ui| {
+        {
             // A read-only multiline TextEdit (not per-line labels) so the
             // whole log can be selected with Ctrl+A and copied.
             let start = self.logs.len().saturating_sub(SHOW_LOG_LINES * 4);
@@ -620,14 +665,14 @@ impl GpConnect {
                             .desired_width(f32::INFINITY),
                     );
                 });
-        });
+        }
     }
 
     fn password_window(&mut self, ctx: &egui::Context) {
         let mut open = self.password_prompt.is_some();
         let mut done = false;
 
-        egui::Window::new("VPN password")
+        egui::Window::new("VPN Password")
             .collapsible(false)
             .resizable(false)
             .open(&mut open)
@@ -635,12 +680,26 @@ impl GpConnect {
                 let Some((idx, pw, remember)) = &mut self.password_prompt else {
                     return;
                 };
+                let mut cancel = false;
                 let portal = self
                     .config
                     .portals
                     .get(*idx)
                     .map(|p| p.name.clone())
                     .unwrap_or_default();
+                let mut close_x = false;
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("VPN Password").strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.small_button("✕").clicked() {
+                            close_x = true;
+                        }
+                    });
+                });
+                if close_x {
+                    cancel = true;
+                }
+                ui.separator();
                 ui.label(format!("Password for {portal}:"));
                 let submit = ui
                     .add(
@@ -652,14 +711,15 @@ impl GpConnect {
                     && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 ui.checkbox(remember, "Remember in system keyring");
                 ui.add_space(8.0);
-                let mut cancel = false;
                 ui.horizontal(|ui| {
-                    if (ui.button("Connect").clicked() || submit) && !pw.is_empty() {
-                        done = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        cancel = true;
-                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Cancel").clicked() {
+                            cancel = true;
+                        }
+                        if (ui.button("Connect").clicked() || submit) && !pw.is_empty() {
+                            done = true;
+                        }
+                    });
                 });
                 if cancel {
                     self.password_prompt = None;
@@ -721,6 +781,7 @@ impl GpConnect {
     fn editor_window(&mut self, ctx: &egui::Context) {
         let mut open = self.editor.is_some();
         let mut save = false;
+        let mut cancel = false;
 
         egui::Window::new("Portal")
             .collapsible(false)
@@ -773,7 +834,6 @@ impl GpConnect {
                      wait for you."
                 });
                 ui.add_space(8.0);
-                let mut cancel = false;
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() && ed.valid() {
                         save = true;

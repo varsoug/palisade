@@ -69,46 +69,73 @@ struct Shared {
     /// Wakes the GUI loop. Without it a click only lands when the next frame
     /// happens to run, which never happens while the window sleeps.
     wake: Option<egui::Context>,
+    /// Whether the desktop is in dark mode (selects white icons).
+    dark: bool,
 }
 
 struct GpConnectTray {
     shared: Arc<Mutex<Shared>>,
 }
 
-/// A 32×32 icon drawn in code: a shield-ish disc with a status colour, plus a
-/// hole in the middle when connected. Avoids shipping a binary asset and gives
-/// the tray an unambiguous connected/disconnected cue.
-fn icon(state: &TrayState) -> ksni::Icon {
-    const SIZE: i32 = 32;
-    let mut data = vec![0u8; (SIZE * SIZE * 4) as usize];
-    let (r, g, b) = if state.busy {
-        (255u8, 190, 0)
-    } else if state.connected {
-        (60u8, 190, 90)
-    } else {
-        (150u8, 150u8, 150)
-    };
-    let c = (SIZE as f32 - 1.0) / 2.0;
-    let outer = c - 1.0;
-    let inner = c * 0.42;
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let dx = x as f32 - c;
-            let dy = y as f32 - c;
-            let d = (dx * dx + dy * dy).sqrt();
-            // Filled disc with a punched-out centre when connected, so the two
-            // states differ in shape and not only in colour (colour-blind safe).
-            let inside = d <= outer && !(state.connected && d <= inner);
-            let alpha = if inside { 255 } else { 0 };
-            let i = ((y * SIZE + x) * 4) as usize;
-            data[i..i + 4].copy_from_slice(&[alpha, r, g, b]);
+/// Load a PNG icon into ksni's ARGB format (alpha first, then RGB).
+fn load_icon(png: &[u8]) -> Option<ksni::Icon> {
+    let decoder = png::Decoder::new(std::io::Cursor::new(png));
+    let mut reader = decoder.read_info().ok()?;
+    let mut buf = vec![0u8; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut buf).ok()?;
+    let w = info.width as usize;
+    let h = info.height as usize;
+    let rgba = &buf[..info.buffer_size()];
+    // Status bars expect small icons (32-48px); the source PNGs are 1199x1312.
+    // Downscale with simple box sampling, preserving aspect ratio.
+    let max = 48usize;
+    let scale = (w as f32 / max as f32).max(h as f32 / max as f32);
+    let nw = (w as f32 / scale).round().max(1.0) as usize;
+    let nh = (h as f32 / scale).round().max(1.0) as usize;
+    let mut data = Vec::with_capacity(nw * nh * 4);
+    for y in 0..nh {
+        for x in 0..nw {
+            let sx = (x as f32 * scale) as usize;
+            let sy = (y as f32 * scale) as usize;
+            let si = (sy.min(h - 1) * w + sx.min(w - 1)) * 4;
+            // Bounds guard: the source buffer may be smaller than expected
+            // (e.g. RGB instead of RGBA), so never read past its end.
+            if si + 3 >= rgba.len() {
+                continue;
+            }
+            // ksni expects ARGB: alpha, red, green, blue.
+            data.extend_from_slice(&[rgba[si + 3], rgba[si], rgba[si + 1], rgba[si + 2]]);
         }
     }
-    ksni::Icon {
-        width: SIZE,
-        height: SIZE,
+    Some(ksni::Icon {
+        width: nw as i32,
+        height: nh as i32,
         data,
-    }
+    })
+}
+
+/// The tray icon: the P-with-rampart mark, with a status overlay.
+/// Black on light desktops, white on dark ones.
+fn icon(state: &TrayState, dark: bool) -> Option<ksni::Icon> {
+    let name = if state.busy {
+        "running"
+    } else if state.connected {
+        "connected"
+    } else if matches!(state.label.as_str(), s if s.starts_with("Error")) {
+        "error"
+    } else {
+        "running"
+    };
+    let path = match (name, dark) {
+        ("running", false) => include_bytes!("../../assets/tray-running.png").as_slice(),
+        ("running", true) => include_bytes!("../../assets/tray-running-dark.png").as_slice(),
+        ("connected", false) => include_bytes!("../../assets/tray-connected.png").as_slice(),
+        ("connected", true) => include_bytes!("../../assets/tray-connected-dark.png").as_slice(),
+        ("error", false) => include_bytes!("../../assets/tray-error.png").as_slice(),
+        ("error", true) => include_bytes!("../../assets/tray-error-dark.png").as_slice(),
+        _ => return None,
+    };
+    load_icon(path)
 }
 
 impl Tray for GpConnectTray {
@@ -125,7 +152,7 @@ impl Tray for GpConnectTray {
     /// Middle click: toggle the tunnel without opening the window.
     fn secondary_activate(&mut self, _x: i32, _y: i32) {
         let (connected, busy) = {
-            let s = self.shared.lock().unwrap();
+            let s = self.shared.lock().unwrap_or_else(|e| e.into_inner());
             (s.state.connected, s.state.busy)
         };
         self.push(if connected || busy {
@@ -140,16 +167,18 @@ impl Tray for GpConnectTray {
     }
 
     fn icon_name(&self) -> String {
-        "network-vpn".into()
+        // Empty name forces the host to use our pixmap instead of a themed
+        // system icon (which would override the custom mark).
+        String::new()
     }
 
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
-        let s = self.shared.lock().unwrap();
-        vec![icon(&s.state)]
+        let s = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+        icon(&s.state, s.dark).into_iter().collect()
     }
 
     fn tool_tip(&self) -> ksni::ToolTip {
-        let s = self.shared.lock().unwrap();
+        let s = self.shared.lock().unwrap_or_else(|e| e.into_inner());
         ksni::ToolTip {
             title: "Palisade".into(),
             description: s.state.label.clone(),
@@ -158,7 +187,12 @@ impl Tray for GpConnectTray {
     }
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
-        let s = self.shared.lock().unwrap().state.clone();
+        let s = self
+            .shared
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .state
+            .clone();
         Vec::new()
             .into_iter()
             .chain(std::iter::once(ksni::MenuItem::Standard(StandardItem {
@@ -180,8 +214,18 @@ impl Tray for GpConnectTray {
                 },
                 enabled: true,
                 activate: Box::new(|this: &mut Self| {
-                    let action = if this.shared.lock().unwrap().state.connected
-                        || this.shared.lock().unwrap().state.busy
+                    let action = if this
+                        .shared
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .state
+                        .connected
+                        || this
+                            .shared
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .state
+                            .busy
                     {
                         TrayAction::Disconnect
                     } else {
@@ -204,7 +248,7 @@ impl Tray for GpConnectTray {
 impl GpConnectTray {
     fn push(&mut self, action: TrayAction) {
         let wake = {
-            let mut s = self.shared.lock().unwrap();
+            let mut s = self.shared.lock().unwrap_or_else(|e| e.into_inner());
             s.actions.push(action);
             s.wake.clone()
         };
@@ -242,25 +286,39 @@ impl TrayHandle {
         })
     }
 
-    pub fn set_state(&self, state: TrayState) {
+    pub fn set_state(&self, state: TrayState, dark: bool) {
         {
-            let mut s = self.shared.lock().unwrap();
-            if s.state == state {
+            let mut s = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+            if s.state == state && s.dark == dark {
                 return;
             }
-            s.state = state;
+            s.state = state.clone();
+            s.dark = dark;
         }
         if let Some(h) = &self.handle {
-            let _ = h.update(|_| {});
+            // Update the tray's own state so ksni re-reads icon and tooltip.
+            // `dark` must be carried too, otherwise a theme flip leaves the
+            // old (black or white) icon in place.
+            let _ = h.update(|tray| {
+                let mut s = tray.shared.lock().unwrap_or_else(|e| e.into_inner());
+                s.state = state.clone();
+                s.dark = dark;
+            });
         }
     }
 
     /// Hand the tray a context it can use to wake the GUI.
     pub fn attach(&self, ctx: egui::Context) {
-        self.shared.lock().unwrap().wake = Some(ctx);
+        self.shared.lock().unwrap_or_else(|e| e.into_inner()).wake = Some(ctx);
     }
 
     pub fn take_actions(&self) -> Vec<TrayAction> {
-        std::mem::take(&mut self.shared.lock().unwrap().actions)
+        std::mem::take(
+            &mut self
+                .shared
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .actions,
+        )
     }
 }

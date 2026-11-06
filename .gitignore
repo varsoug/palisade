@@ -4,3 +4,4 @@ target/
 win_mac_binaries/
 result
 kimi-export-session_-*.md
+*.pdf

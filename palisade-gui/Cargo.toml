@@ -25,6 +25,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ksni = { version = "0.3", features = ["blocking"] }
 fs2 = "0.4.3"
 directories = "5"
+png = "0.18.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
