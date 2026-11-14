@@ -10,6 +10,7 @@ use tokio::task::JoinHandle;
 use crate::PortalConfig;
 
 pub const DEFAULT_OPENCONNECT_BIN: &str = "openconnect";
+pub const DEFAULT_GPCLIENT_BIN: &str = "gpclient";
 
 /// Handle used to answer prompts (OTP challenge) by writing to openconnect's
 /// input. On Unix this is the PTY master; on Windows the piped stdin.
@@ -113,7 +114,7 @@ impl Session {
         password: Option<String>,
         openconnect_bin: Option<PathBuf>,
     ) -> Result<(), String> {
-        let openconnect_bin = openconnect_bin.unwrap_or_else(|| DEFAULT_OPENCONNECT_BIN.into());
+        let bin = openconnect_bin.unwrap_or_else(|| default_bin_for(&portal.backend).into());
         *self.state.lock().unwrap() = ConnState::Authenticating;
         self.cmd_tx
             .as_ref()
@@ -121,7 +122,7 @@ impl Session {
             .send(Job::Connect {
                 portal,
                 password,
-                openconnect_bin,
+                openconnect_bin: bin,
             })
             .map_err(|e| format!("session worker is gone: {e}"))
     }
@@ -157,6 +158,13 @@ impl Drop for Session {
         if let Some(w) = self.worker.take() {
             let _ = w.join();
         }
+    }
+}
+
+fn default_bin_for(backend: &crate::Backend) -> &'static str {
+    match backend {
+        crate::Backend::Openconnect => DEFAULT_OPENCONNECT_BIN,
+        crate::Backend::Gpclient => DEFAULT_GPCLIENT_BIN,
     }
 }
 
@@ -974,6 +982,19 @@ mod tests {
             backend,
             reuse_credentials: true,
         }
+    }
+
+    #[test]
+    fn default_bin_matches_backend() {
+        assert_eq!(
+            default_bin_for(&crate::Backend::Openconnect),
+            DEFAULT_OPENCONNECT_BIN
+        );
+        assert_eq!(
+            default_bin_for(&crate::Backend::Gpclient),
+            DEFAULT_GPCLIENT_BIN
+        );
+        assert_ne!(DEFAULT_GPCLIENT_BIN, DEFAULT_OPENCONNECT_BIN);
     }
 
     #[test]

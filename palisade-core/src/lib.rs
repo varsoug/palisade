@@ -7,7 +7,9 @@ mod config;
 mod session;
 
 pub use config::{AppConfig, AuthMode, Backend, PortalConfig, Settings, Theme};
-pub use session::{ConnEvent, ConnState, Session, TunnelInfo, DEFAULT_OPENCONNECT_BIN};
+pub use session::{
+    ConnEvent, ConnState, Session, TunnelInfo, DEFAULT_GPCLIENT_BIN, DEFAULT_OPENCONNECT_BIN,
+};
 
 use keyring::Entry;
 

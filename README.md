@@ -105,9 +105,29 @@ one (a PTY) and types the password and any verification code there. Note that
 to read from a pipe.
 
 The backend is per portal (portal editor → **Backend**). Binary paths come from
-Settings → **openconnect binary** / **gpclient binary**; an empty field means
-"find it on `PATH`". The NixOS module points `openconnect_bin` at a sudo wrapper
-when `allowedUsers` is set.
+Settings → **openconnect binary** / **gpclient binary**; each empty field means
+"find that backend's binary on `PATH`" (`openconnect` and `gpclient`
+respectively). A path in **openconnect binary** is never used for a gpclient
+portal. The NixOS module points `openconnect_bin` at a sudo wrapper when
+`allowedUsers` is set.
+
+On non-NixOS Linux, `packaging/linux/` contains the polkit policy and
+installer for `palisade-helper`. The GUI starts this root helper once through
+`pkexec` at application startup; connect, disconnect and reconnect then use a
+user-private Unix socket and the already-privileged helper, so no additional
+password dialogs appear. The helper accepts only the supported VPN backends
+and verifies the peer UID.
+
+To install it after `cargo build --release` and
+`cargo build --release --manifest-path palisade-helper/Cargo.toml`:
+
+```
+pkexec sh packaging/linux/install-privilege-helper.sh /path/to/gpclient
+sh packaging/linux/install-user-wrappers.sh
+```
+
+The root helper reads `/usr/local/etc/palisade-helper.json`, which the installer
+writes with the trusted absolute paths of the two backend binaries.
 
 ## 🔁 Differences from the official GlobalProtect client
 

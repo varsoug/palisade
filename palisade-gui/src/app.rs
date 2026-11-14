@@ -394,10 +394,10 @@ impl eframe::App for GpConnect {
                 ConnState::Authenticating | ConnState::Connecting | ConnState::Connected(_)
             );
             let text = if busy { "Disconnect" } else { "Connect" };
-            let button = egui::Button::new(egui::RichText::new(text).size(15.0))
+            let button = egui::Button::new(text)
+                .min_size(egui::vec2(ui.available_width(), 36.0))
                 .fill(primary_blue())
-                .corner_radius(4.0)
-                .min_size(egui::vec2(ui.available_width(), 36.0));
+                .corner_radius(4.0);
             if ui.add(button).clicked() {
                 if busy {
                     self.session.disconnect();

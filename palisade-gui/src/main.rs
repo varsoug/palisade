@@ -1,5 +1,7 @@
 mod app;
 mod autostart;
+#[cfg(unix)]
+mod privilege;
 mod single_instance;
 mod tray;
 
@@ -13,6 +15,12 @@ fn main() -> eframe::Result<()> {
 
     // One GUI at a time: a new start replaces a stale one.
     let _instance = single_instance::claim();
+
+    // Non-NixOS installs use one privileged helper process for all VPN
+    // commands. pkexec asks for authentication here, once; connect,
+    // disconnect and reconnect then reuse that already-root helper.
+    #[cfg(unix)]
+    let _helper = privilege::start_helper();
 
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<ConnEvent>();
     let session = match Session::spawn(event_tx) {

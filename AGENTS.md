@@ -32,7 +32,9 @@ config, and the OS keyring.
       with optional `--csd-wrapper` (HIP), `--external-browser=xdg-open|open|cmd`
       (SAML) and the portal host last; password goes over stdin/PTY.
     - `Backend::Gpclient` — `gpclient connect <portal> --os=Windows --user U --hip`
-      (note: gpclient wants `Windows`, openconnect wants `win`).
+      (note: gpclient wants `Windows`, openconnect wants `win`). A gpclient
+      portal looks up `Settings.gpclient_bin` (default `gpclient` on `PATH`);
+      it must never be launched through the `openconnect_bin` wrapper.
       gpclient does the portal login over HTTP and submits HIP itself. It
       requires a TTY for its prompts (`inquire` bails with "The input device is
       not a TTY"), which is why the PTY above is mandatory for this backend;
@@ -57,6 +59,14 @@ config, and the OS keyring.
   wrapper + NOPASSWD sudoers for openconnect, `tun` module, keyring),
   `nix/dev-shell.nix` (verified dev environment), `shell.nix` (nix-shell alias).
   Flakes only see git-tracked files — `git add` new Nix files before building.
+- `palisade-helper/` — a separate Linux-only workspace (not a member of the
+  root workspace, so Windows builds are unaffected). It contains the
+  privileged helper and its thin client. The GUI starts the root helper once
+  through `pkexec`; the client passes stdio fds over a user-private Unix
+  socket. All subsequent connect/disconnect/reconnect commands reuse that
+  process, so there is only one authentication dialog. The helper reads
+  trusted backend paths from `/usr/local/etc/palisade-helper.json`.
+  `packaging/linux/` contains the polkit policy and installers.
 - `docs/protocol-notes.md` — REA-backed reverse-engineering notes from the
   official GlobalProtect 5.2.13-48 installers in `win_mac_binaries/` (kept
   out of git; `win_mac_binaries/re/` is the extraction scratch dir).
@@ -72,7 +82,9 @@ Primary (Nix):
 - `nix build` — package; `nix flake check` — package + NixOS module type-check.
 
 Plain cargo on non-Nix systems works too (needs a Rust toolchain and
-`dbus-1`/`openssl` dev packages for the keyring crate).
+`dbus-1`/`openssl` dev packages for the keyring crate). The Linux helper is a
+separate workspace: build it with
+`cargo build --release --manifest-path palisade-helper/Cargo.toml`.
 
 Tests: `cargo test` (unit tests in the crates; no integration tests yet —
 real VPN connectivity is verified manually against a portal). On this host,

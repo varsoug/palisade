@@ -1,0 +1,4 @@
+{
+  "gpclient_bin": "/usr/bin/gpclient",
+  "openconnect_bin": "/usr/sbin/openconnect"
+}
