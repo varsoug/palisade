@@ -108,6 +108,7 @@
                   json = builtins.fromJSON text;
                   portals = json.portals;
                   settings = json.settings;
+                  gpclientPath = "${config.services.palisade.gpclientPackage}/bin/gpclient";
                 in
                 {
                   assertions = [
@@ -118,17 +119,25 @@
                     { assertion = nixpkgs.lib.all (p: p.reuse_credentials == false) portals; message = "both portals must not reuse credentials"; }
                     { assertion = settings.connect_at_startup == true; message = "connect_at_startup must be enabled"; }
                     { assertion = settings.close_to_tray == true; message = "close_to_tray must be enabled"; }
-                    { assertion = settings.gpclient_bin != ""; message = "gpclient_bin must be set when gpclient backend is enabled"; }
+                    { assertion = settings.gpclient_bin == gpclientPath; message = "gpclient_bin must point at the configured gpclientPackage when the gpclient backend is enabled"; }
+                    { assertion = builtins.elem config.services.palisade.gpclientPackage config.environment.systemPackages; message = "gpclientPackage must be installed in systemPackages when the gpclient backend is enabled"; }
                     { assertion = json.last_portal == null; message = "last_portal must stay null"; }
                   ];
                 })
             ];
           };
-          # Force NixOS assertion checking without building a toplevel.
+          # Force NixOS assertion checking and toplevel derivation evaluation
+          # without building either toplevel.
           checked = nixpkgs.lib.asserts.checkAssertWarn
             (defaultEval.config.assertions ++ gpEval.config.assertions)
             (defaultEval.config.warnings ++ gpEval.config.warnings)
             "assertions passed";
+          forcedDrvPaths = [
+            defaultEval.config.system.build.toplevel.drvPath
+            gpEval.config.system.build.toplevel.drvPath
+          ];
+          drvPathLines = builtins.concatStringsSep "\n"
+            (map (p: "echo ${nixpkgs.lib.escapeShellArg (builtins.unsafeDiscardStringContext p)} >> \"$out\"") forcedDrvPaths);
         in
         {
           inherit (self.packages.${system}) palisade;
@@ -136,6 +145,7 @@
             echo ${nixpkgs.lib.escapeShellArg checked} > "$out"
             echo ${nixpkgs.lib.escapeShellArg (builtins.unsafeDiscardStringContext defaultEval.config.environment.etc."palisade/config.json".text)} >> "$out"
             echo ${nixpkgs.lib.escapeShellArg (builtins.unsafeDiscardStringContext gpEval.config.environment.etc."palisade/config.json".text)} >> "$out"
+            ${drvPathLines}
           '';
         });
 

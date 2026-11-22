@@ -83,7 +83,9 @@ sudoers rule, so the unprivileged GUI can spawn openconnect as root.
 `backend` applies to every portal unless that portal sets its own `backend`.
 When `gpclient` is selected (service-level or per portal), the module installs
 `gpclient` automatically and points `gpclient_bin` at it in the generated
-config. The module does **not** configure root privileges for gpclient: its
+config. When `gpclient` is not selected, `gpclient_bin` is left empty: the app
+then falls back to finding `gpclient` on `PATH`, but no portal is configured to
+use it. The module does **not** configure root privileges for gpclient: its
 upstream privilege flow is unverified on NixOS and may need separate helper
 integration. `connectAtStartup` is written to the config but does not apply to
 the declarative fallback, which has no last-used portal. The generated config
