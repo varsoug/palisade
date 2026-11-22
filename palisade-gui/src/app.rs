@@ -180,11 +180,9 @@ impl GpConnect {
             return;
         }
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-        // Wayland has no set_visible and cannot unminimise, so minimising is
-        // the only hide that works and focus is how we come back. On X11 the
-        // Visible pair does the real work.
+        // X11 honours Visible(false); Wayland treats it as a no-op, so the
+        // window stays visible there. Focus is how the window comes back.
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         self.hidden_to_tray = true;
         tracing::info!("window hidden to tray; the session keeps running");
     }
