@@ -19,6 +19,7 @@ fs2 = "0.4.3"
 directories = "5"
 png = "0.18.1"
 slint = { version = "1.9.2", features = ["std", "compat-1-2", "backend-winit", "renderer-skia"], default-features = false }
+copypasta = "0.10"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

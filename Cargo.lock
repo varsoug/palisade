@@ -2885,6 +2885,7 @@ dependencies = [
 name = "palisade-gui"
 version = "0.1.0"
 dependencies = [
+ "copypasta",
  "directories 5.0.1",
  "fs2",
  "ksni",

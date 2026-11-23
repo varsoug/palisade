@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
+use copypasta::ClipboardProvider;
 use palisade_core::{
     delete_password, get_password, store_password, AppConfig, AuthMode, Backend, ConnEvent,
     ConnState, PortalConfig, Session, Theme,
@@ -68,6 +69,10 @@ impl Controller {
     }
 
     fn refresh_portals(&mut self) {
+        let (_, _) = bridge::settings_surface_decision(
+            self.ui.get_active_tab(),
+            self.ui.get_settings_open(),
+        );
         let names: Vec<SharedString> = self
             .config
             .portals
@@ -481,7 +486,10 @@ fn main() -> Result<(), slint::PlatformError> {
     let c = controller.clone();
     ui.on_copy_log(move || {
         let text = c.borrow().ui.get_log_text();
-        let _ = text;
+        let text = bridge::copy_log_text(&text).to_string();
+        if let Ok(mut clipboard) = copypasta::ClipboardContext::new() {
+            let _ = clipboard.set_contents(text);
+        }
     });
     let c = controller.clone();
     ui.on_save_settings(move || c.borrow_mut().save_settings());

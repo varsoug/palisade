@@ -75,6 +75,17 @@ pub fn password_store_decision(remember: bool) -> bool {
     remember
 }
 
+/// Settings is an inline tab; the separate startup-only dialog is reserved for
+/// externally requested first-run/startup configuration.
+pub fn settings_surface_decision(active_tab: i32, settings_open: bool) -> (bool, bool) {
+    (settings_open && active_tab != 2, active_tab == 2)
+}
+
+/// Copy the full log text; callers pass only already-sanitized lines.
+pub fn copy_log_text(text: &str) -> &str {
+    text
+}
+
 pub fn empty_state_text() -> (&'static str, &'static str) {
     ("No portals configured", "Add portal…")
 }
@@ -172,6 +183,19 @@ mod tests {
         assert!(!json.contains(password));
         assert_eq!(portal.portal, "vpn.example.com");
         assert_eq!(portal.username, "alice");
+    }
+
+    #[test]
+    fn settings_tab_opens_inline_settings_panel() {
+        let (needs_dialog, opens_inline) = settings_surface_decision(2, false);
+        assert!(!needs_dialog);
+        assert!(opens_inline);
+    }
+
+    #[test]
+    fn copy_log_copies_entire_selectable_text() {
+        assert_eq!(copy_log_text("line one\nline two"), "line one\nline two");
+        assert_eq!(copy_log_text(""), "");
     }
 
     #[test]

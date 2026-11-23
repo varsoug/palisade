@@ -233,7 +233,7 @@ export component AppWindow inherits Window {
             HorizontalLayout { padding-left: 10px; padding-right: 16px; spacing: 10px;
                 SmallButton { text: "Portals"; horizontal-stretch: 1; selected: root.active-tab == 0; clicked => { root.active-tab = 0; } }
                 SmallButton { text: "Log"; horizontal-stretch: 1; selected: root.active-tab == 1; clicked => { root.active-tab = 1; } }
-                SmallButton { text: "Settings"; horizontal-stretch: 1; selected: root.active-tab == 2 || root.settings-open; clicked => { root.settings-open = true; root.settings-startup-only = false; } }
+                SmallButton { text: "Settings"; horizontal-stretch: 1; selected: root.active-tab == 2; clicked => { root.active-tab = 2; } }
             }
         }
 
@@ -242,6 +242,35 @@ export component AppWindow inherits Window {
             PortalList { x: 16px; y: 16px; width: root.width - 32px; height: root.height - 122px;
                 names: root.portal-names; metas: root.portal-metas; selected: root.selected-portal;
                 select(i) => { root.select-portal(i); } edit(i) => { root.edit-portal(i); } remove(i) => { root.remove-portal(i); } add => { root.add-portal(); } }
+        }
+
+        if root.active-tab == 2: Rectangle {
+            background: Palette.window-bg;
+            VerticalLayout { x: 16px; y: 16px; width: root.width - 32px; height: root.height - 122px; spacing: 8px;
+                FieldLabel { text: "Theme"; }
+                HorizontalLayout { spacing: 18px;
+                    CheckBox { text: "System"; checked: root.theme == 0; toggled => { root.theme = 0; } }
+                    CheckBox { text: "Light"; checked: root.theme == 1; toggled => { root.theme = 1; } }
+                    CheckBox { text: "Dark"; checked: root.theme == 2; toggled => { root.theme = 2; } }
+                }
+                Rectangle { height: 1px; background: Palette.border; }
+                CheckBox { text: "Reconnect on unexpected drop"; checked <=> root.reconnect; }
+                CheckBox { text: "Launch at login"; checked <=> root.launch-at-login; }
+                CheckBox { text: "Connect at login"; checked <=> root.connect-at-login; }
+                CheckBox { text: "Close to tray"; checked <=> root.close-to-tray; }
+                Rectangle { height: 1px; background: Palette.border; }
+                FieldLabel { text: "openconnect binary"; }
+                Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                    LineEdit { text <=> root.openconnect-bin; font-size: 12px; placeholder-text: "(empty)"; } }
+                FieldLabel { text: "gpclient binary"; }
+                Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                    LineEdit { text <=> root.gpclient-bin; font-size: 12px; placeholder-text: "(empty)"; } }
+                Rectangle { vertical-stretch: 1; }
+                HorizontalLayout { spacing: 10px;
+                    SmallButton { text: "Cancel"; clicked => { root.active-tab = 0; } }
+                    PrimaryButton { text: "Save"; emphasized: true; horizontal-stretch: 1; clicked => { root.save-settings(); } }
+                }
+            }
         }
         if root.active-tab == 1: Rectangle {
             background: Palette.window-bg;
