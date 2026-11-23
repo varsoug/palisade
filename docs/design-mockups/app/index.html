@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GPConnect — UI Mockups</title>
+<style>
+  :root{
+    --win-bg:#f2f2f2; --win-border:#b9b9b9; --header-bg:#e6e6e6;
+    --text:#1f1f1f; --text-dim:#6a6a6a; --btn-bg:#fafafa; --btn-border:#adadad;
+    --primary:#3465a4; --primary-dark:#2b548a; --field-bg:#ffffff;
+    --gray:#8a8a8a; --amber:#c8871a; --green:#2e8b3d; --red:#c0392b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Noto Sans','DejaVu Sans',sans-serif;}
+  body{background:#ffffff;}
+  .mock{display:inline-block;vertical-align:top;margin:24px;}
+  .caption{font-size:13px;color:#444;margin:8px 2px 0;font-family:'DejaVu Sans Mono',monospace;}
+
+  /* ===== window frame ===== */
+  .window{width:460px;height:560px;background:var(--win-bg);border:1px solid var(--win-border);
+    border-radius:8px;overflow:hidden;display:flex;flex-direction:column;position:relative;
+    box-shadow:0 2px 10px rgba(0,0,0,.18);}
+  .titlebar{height:34px;flex:0 0 34px;background:var(--header-bg);border-bottom:1px solid var(--win-border);
+    display:flex;align-items:center;padding:0 12px;gap:8px;}
+  .titlebar .ttl{font-size:13px;font-weight:600;color:var(--text);}
+  .titlebar .winbtns{margin-left:auto;display:flex;gap:6px;}
+  .winbtn{width:14px;height:14px;border-radius:50%;border:1px solid #a0a0a0;background:#d6d6d6;display:inline-block;}
+  .winbtn.close{background:#e0a49c;border-color:#b0766e;}
+  .backbtn{border:1px solid var(--btn-border);background:var(--btn-bg);border-radius:4px;
+    font-size:12px;color:var(--text);padding:2px 9px;cursor:default;}
+  .content{flex:1;display:flex;flex-direction:column;padding:16px;gap:14px;overflow:hidden;}
+  .footerbar{flex:0 0 auto;border-top:1px solid #d2d2d2;background:#e9e9e9;display:flex;
+    padding:10px 16px;gap:10px;}
+
+  /* ===== widgets ===== */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--btn-bg);
+    border:1px solid var(--btn-border);border-radius:5px;color:var(--text);font-size:13px;
+    padding:7px 16px;min-height:32px;}
+  .btn.primary{background:var(--primary);border-color:var(--primary-dark);color:#fff;font-weight:600;}
+  .btn.big{width:100%;padding:11px 16px;font-size:15px;}
+  .btn.small{padding:4px 10px;font-size:12px;min-height:26px;}
+  .btn:disabled,.btn.disabled{opacity:.5;}
+  .btnrow{display:flex;gap:10px;}
+  .btnrow .btn{flex:1;}
+  label.flabel{font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px;}
+  .field,.select{width:100%;background:var(--field-bg);border:1px solid var(--btn-border);border-radius:4px;
+    font-size:13px;color:var(--text);padding:7px 9px;min-height:32px;display:flex;align-items:center;}
+  .select{justify-content:space-between;}
+  .select .caret{color:var(--text-dim);font-size:11px;}
+  .field.mono{font-family:'DejaVu Sans Mono',monospace;}
+  .field .ph{color:#9a9a9a;}
+  .hint{font-size:11px;color:var(--text-dim);margin-top:4px;}
+  .formrow{display:flex;flex-direction:column;}
+
+  .check,.radio{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text);
+    padding:4px 0;cursor:default;}
+  .box{flex:0 0 16px;width:16px;height:16px;border:1px solid var(--btn-border);border-radius:3px;
+    background:#fff;margin-top:1px;position:relative;}
+  .box.on{background:var(--primary);border-color:var(--primary-dark);}
+  .box.on::after{content:"";position:absolute;left:4px;top:1px;width:5px;height:9px;
+    border:solid #fff;border-width:0 2px 2px 0;transform:rotate(42deg);}
+  .radio .box{border-radius:50%;}
+  .radio .box.on::after{content:"";position:absolute;left:3px;top:3px;width:8px;height:8px;
+    border-radius:50%;background:#fff;border:none;transform:none;}
+  .radiogroup{display:flex;gap:18px;}
+  .radiocol{display:flex;flex-direction:column;gap:2px;}
+
+  /* ===== status ===== */
+  .statusbox{border:1px solid #d2d2d2;background:#e9e9e9;border-radius:6px;padding:16px;
+    display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;}
+  .statusline{display:flex;align-items:center;gap:9px;}
+  .dot{width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.25);}
+  .dot.gray{background:var(--gray);} .dot.amber{background:var(--amber);}
+  .dot.green{background:var(--green);} .dot.red{background:var(--red);}
+  .stext{font-size:16px;font-weight:600;color:var(--text);}
+  .ssub{font-size:12px;color:var(--text-dim);}
+  .spinner{width:26px;height:26px;border-radius:50%;border:3px solid #cfcfcf;
+    border-top-color:var(--amber);}
+  .spinner.blue{border-top-color:var(--primary);}
+  .kv{display:flex;justify-content:space-between;font-size:13px;padding:5px 2px;
+    border-bottom:1px solid #dedede;}
+  .kv:last-child{border-bottom:none;}
+  .kv .k{color:var(--text-dim);} .kv .v{color:var(--text);}
+  .kv .v.mono{font-family:'DejaVu Sans Mono',monospace;font-size:12px;}
+  .infobox{border:1px solid #d2d2d2;background:#fbfbfb;border-radius:6px;padding:6px 12px;width:100%;}
+  .errbox{border:1px solid #e0b4b0;background:#f9e9e7;border-radius:6px;padding:10px 12px;width:100%;
+    color:#8c2f24;font-size:13px;display:flex;gap:8px;align-items:center;}
+
+  /* ===== modal ===== */
+  .dim{position:absolute;inset:0;background:rgba(40,40,40,.35);}
+  .modal{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:340px;
+    background:var(--win-bg);border:1px solid #9a9a9a;border-radius:8px;
+    box-shadow:0 6px 24px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;}
+  .modal .mhead{background:var(--header-bg);border-bottom:1px solid var(--win-border);
+    padding:9px 14px;display:flex;align-items:center;}
+  .modal .mhead .ttl{font-size:13px;font-weight:600;}
+  .modal .mhead .x{margin-left:auto;width:20px;height:20px;border-radius:4px;border:1px solid var(--btn-border);
+    background:var(--btn-bg);color:#666;font-size:11px;display:flex;align-items:center;justify-content:center;}
+  .modal .mbody{padding:14px;display:flex;flex-direction:column;gap:10px;}
+  .modal .mfoot{padding:10px 14px;border-top:1px solid #d2d2d2;display:flex;justify-content:flex-end;gap:8px;}
+
+  /* ===== log ===== */
+  .logbox{flex:1;border:1px solid var(--btn-border);border-radius:5px;background:#ffffff;
+    padding:10px 12px;font-family:'DejaVu Sans Mono',monospace;font-size:11.5px;line-height:1.75;
+    color:#222;overflow:hidden;white-space:pre;}
+  .logbox .sel{background:#b8d2ee;}
+  .logbox .ts{color:#8a8a8a;}
+
+  /* ===== portal list ===== */
+  .plist{display:flex;flex-direction:column;gap:10px;flex:1;overflow:hidden;}
+  .pitem{border:1px solid #cfcfcf;border-radius:6px;background:#fbfbfb;padding:10px 12px;
+    display:flex;gap:10px;align-items:center;}
+  .pitem.selected{border-color:var(--primary);background:#eef3f9;}
+  .pitem .pinfo{flex:1;min-width:0;}
+  .pitem .pname{font-size:13px;font-weight:600;}
+  .pitem .pmeta{font-size:11.5px;color:var(--text-dim);font-family:'DejaVu Sans Mono',monospace;
+    margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pitem .pacts{display:flex;gap:6px;}
+
+  /* ===== tray ===== */
+  .traywrap{width:460px;border:1px solid var(--win-border);border-radius:8px;overflow:hidden;
+    box-shadow:0 2px 10px rgba(0,0,0,.18);background:#3b4a5a;position:relative;}
+  .desktop{height:210px;background:linear-gradient(135deg,#4a5d72,#33404f);}
+  .taskbar{height:44px;background:#20262e;border-top:1px solid #11161b;display:flex;
+    align-items:center;padding:0 10px;gap:8px;}
+  .trayarea{margin-left:auto;display:flex;align-items:center;gap:10px;}
+  .trayicon{width:26px;height:26px;border-radius:5px;background:#2e3944;border:1px solid #4a5a6a;
+    display:flex;align-items:center;justify-content:center;}
+  .clock{color:#cfd8e0;font-size:11px;}
+  .traymenu{position:absolute;right:8px;bottom:52px;width:230px;background:#f6f6f6;
+    border:1px solid #9a9a9a;border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.4);
+    overflow:hidden;}
+  .traymenu .tmhead{padding:8px 12px;font-size:12px;font-weight:700;color:var(--text);
+    border-bottom:1px solid #d8d8d8;background:#ececec;}
+  .mi{padding:7px 12px;font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;}
+  .mi.disabled{color:#9a9a9a;}
+  .mi.hov{background:#dce8f5;}
+  .sep{height:1px;background:#d8d8d8;margin:3px 0;}
+  .tooltip{position:absolute;background:#2b2b2b;color:#eee;font-size:11px;padding:4px 8px;
+    border-radius:4px;border:1px solid #555;}
+</style>
+</head>
+<body>
+
+<!-- ============ 01-disconnected ============ -->
+<div class="mock" id="m01"><div class="window">
+  <div class="titlebar"><span class="ttl">GPConnect</span>
+    <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close"></span></span></div>
+  <div class="content">
+    <div class="formrow">
+      <label class="flabel">Portal</label>
+      <div class="select"><span>ETSP &nbsp;<span style="color:#8a8a8a;font-size:12px">(vpn.etsp.ru)</span></span><span class="caret">&#9662;</span></div>
+    </div>
+    <div class="statusbox" style="flex:1;justify-content:center;">
+      <div class="statusline"><span class="dot gray"></span><span class="stext">Not Connected</span></div>
+      <div class="ssub">Select a portal and press Connect.</div>
+    </div>
+    <button class="btn primary big">Connect</button>
+  </div>
+  <div class="footerbar">
+    <button class="btn small" style="flex:1">Portals</button>
+    <button class="btn small" style="flex:1">Log</button>
+    <button class="btn small" style="flex:1">Settings</button>
+  </div>
+</div><div class="caption">01-disconnected.png</div></div>
+
+<!-- ============ 02-authenticating ============ -->
+<div class="mock" id="m02"><div class="window">
+  <div class="titlebar"><span class="ttl">GPConnect</span>
+    <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close"></span></span></div>
+  <div class="content">
+    <div class="formrow">
+      <label class="flabel">Portal</label>
+      <div class="select" style="opacity:.55"><span>ETSP &nbsp;<span style="color:#8a8a8a;font-size:12px">(vpn.etsp.ru)</span></span><span class="caret">&#9662;</span></div>
+    </div>
+    <div class="statusbox" style="flex:1;justify-content:center;">
+      <div class="statusline"><span class="dot amber"></span><span class="stext">Authenticating&hellip;</span></div>
+      <div class="spinner"></div>
+      <div class="ssub">Checking credentials with vpn.etsp.ru</div>
+    </div>
+    <button class="btn big">Disconnect</button>
+  </div>
+  <div class="footerbar">
+    <button class="btn small disabled" style="flex:1">Portals</button>
+    <button class="btn small" style="flex:1">Log</button>
+    <button class="btn small disabled" style="flex:1">Settings</button>
+  </div>
+</div><div class="caption">02-authenticating.png</div></div>
+
+<!-- ============ 03-connecting ============ -->
+<div class="mock" id="m03"><div class="window">
+  <div class="titlebar"><span class="ttl">GPConnect</span>
+    <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close"></span></span></div>
+  <div class="content">
+    <div class="formrow">
+      <label class="flabel">Portal</label>
+      <div class="select" style="opacity:.55"><span>ETSP &nbsp;<span style="color:#8a8a8a;font-size:12px">(vpn.etsp.ru)</span></span><span class="caret">&#9662;</span></div>
+    </div>
+    <div class="statusbox" style="flex:1;justify-content:center;">
+      <div class="statusline"><span class="dot amber"></span><span class="stext">Connecting&hellip;</span></div>
+      <div class="spinner blue"></div>
+      <div class="ssub">Retrieving configuration&hellip;</div>
+    </div>
+    <button class="btn big">Disconnect</button>
+  </div>
+  <div class="footerbar">
+    <button class="btn small disabled" style="flex:1">Portals</button>
+    <button class="btn small" style="flex:1">Log</button>
+    <button class="btn small disabled" style="flex:1">Settings</button>
+  </div>
+</div><div class="caption">03-connecting.png</div></div>
+
+<!-- ============ 04-connected ============ -->
+<div class="mock" id="m04"><div class="window">
+  <div class="titlebar"><span class="ttl">GPConnect</span>
+    <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close"></span></span></div>
+  <div class="content">
+    <div class="statusbox">
+      <div class="statusline"><span class="dot green"></span><span class="stext">Connected</span></div>
+      <div class="ssub">ETSP &mdash; vpn.etsp.ru</div>
+    </div>
+    <div class="infobox">
+      <div class="kv"><span class="k">Portal</span><span class="v">ETSP</span></div>
+      <div class="kv"><span class="k">Username</span><span class="v">gusarov_oo</span></div>
+      <div class="kv"><span class="k">Tunnel IP</span><span class="v mono">172.16.25.238</span></div>
+    </div>
+    <div style="flex:1"></div>
+    <button class="btn big">Disconnect</button>
+  </div>
+  <div class="footerbar">
+    <button class="btn small" style="flex:1">Portals</button>
+    <button class="btn small" style="flex:1">Log</button>
+    <button class="btn small" style="flex:1">Settings</button>
+  </div>
+</div><div class="caption">04-connected.png</div></div>
+
+<!-- ============ 05-error ============ -->
+<div class="mock" id="m05"><div class="window">
+  <div class="titlebar"><span class="ttl">GPConnect</span>
+    <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close"></span></span></div>
+  <div class="content">
+    <div class="formrow">
+      <label class="flabel">Portal</label>
+      <div class="select"><span>ETSP &nbsp;<span style="color:#8a8a8a;font-size:12px">(vpn.etsp.ru)</span></span><span class="caret">&#9662;</span></div>
+    </div>
+    <div class="statusbox" style="flex:1;justify-content:center;">
+      <div class="statusline"><span class="dot red"></span><span class="stext">Error</span></div>
+      <div class="errbox"><span style="font-weight:700">!</span><span>Authentication failed</span></div>
+      <div class="ssub">Check your credentials or see the log for details.</div>
+    </div>
+    <button class="btn primary big">Connect</button>
+  </div>
+  <div class="footerbar">
+    <button class="btn small" style="flex:1">Portals</button>
+    <button class="btn small" style="flex:1">Log</button>
+    <button class="btn small" style="flex:1">Settings</button>
+  </div>
+</div><div class="caption">05-error.png</div></div>
+
+<!-- ============ 06-password-dialog ============ -->
+<div class="mock" id="m06"><div class="window">
+  <div class="titlebar"><span class="ttl">GPConnect</span>
+    <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close"></span></span></div>
+  <div class="content">
+    <div class="formrow">
+      <label class="flabel">Portal</label>
+      <div class="select"><span>ETSP &nbsp;<span style="color:#8a8a8a;font-size:12px">(vpn.etsp.ru)</span></span><span class="caret">&#9662;</span></div>
+    </div>
+    <div class="statusbox" style="flex:1;justify-content:center;">
+      <div class="statusline"><span class="dot amber"></span><span class="stext">Authenticating&hellip;</span></div>
+      <div class="ssub">Waiting for credentials</div>
+    </div>
+    <button class="btn big">Disconnect</button>
+  </div>
+  <div class="footerbar">
+    <button class="btn small disabled" style="flex:1">Portals</button>
+    <button class="btn small" style="flex:1">Log</button>
+    <button class="btn small disabled" style="flex:1">Settings</button>
+  </div>
+  <div class="dim"></div>
+  <div class="modal">
+    <div class="mhead"><span class="ttl">VPN Password</span><span class="x">&#10005;</span></div>
+    <div class="mbody">
+      <div style="font-size:12px;color:var(--text-dim)">Portal: <b style="color:var(--text)">ETSP</b> (vpn.etsp.ru)</div>
+      <div class="formrow">
+        <label class="flabel">Password for gusarov_oo</label>
+        <div class="field mono">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</div>
+      </div>
+      <div class="check"><span class="box"></span><span>Remember in system keyring</span></div>
+    </div>
+    <div class="mfoot"><button class="btn small">Cancel</button><button class="btn primary small">Connect</button></div>
+  </div>
+</div><div class="caption">06-password-dialog.png</div></div>
+
+<!-- ============ 07-verification-dialog ============ -->
+<div class="mock" id="m07"><div class="window">
+  <div class="titlebar"><span class="ttl">GPConnect</span>
+    <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close"></span></span></div>
+  <div class="content">
+    <div class="formrow">
+      <label class="flabel">Portal</label>
+      <div class="select"><span>ETSP &nbsp;<span style="color:#8a8a8a;font-size:12px">(vpn.etsp.ru)</span></span><span class="caret">&#9662;</span></div>
+    </div>
+    <div class="statusbox" style="flex:1;justify-content:center;">
+      <div class="statusline"><span class="dot amber"></span><span class="stext">Authenticating&hellip;</span></div>
+      <div class="ssub">Two-factor verification required</div>
+    </div>
+    <button class="btn big">Disconnect</button>
+  </div>
+  <div class="footerbar">
+    <button class="btn small disabled" style="flex:1">Portals</button>
+    <button class="btn small" style="flex:1">Log</button>
+    <button class="btn small disabled" style="flex:1">Settings</button>
+  </div>
+  <div class="dim"></div>
+  <div class="modal">
+    <div class="mhead"><span class="ttl">Verification Code</span><span class="x">&#10005;</span></div>
+    <div class="mbody">
+      <div style="font-size:13px;color:var(--text)">Enter the one-time code</div>
+      <div class="field mono" style="letter-spacing:6px;">482<span style="color:#9a9a9a">|</span></div>
+    </div>
+    <div class="mfoot"><button class="btn small">Cancel</button><button class="btn primary small">OK</button></div>
+  </div>
+</div><div class="caption">07-verification-dialog.png</div></div>
+
+<!-- ============ 08-portal-editor ============ -->
+<div class="mock" id="m08"><div class="window">
+  <div class="titlebar"><button class="backbtn">&#8592; Back</button><span class="ttl">Edit Portal</span></div>
+  <div class="content" style="gap:10px;">
+    <div class="formrow"><label class="flabel">Name</label><div class="field">ETSP</div></div>
+    <div class="formrow"><label class="flabel">Portal hostname</label><div class="field mono">vpn.etsp.ru</div></div>
+    <div class="formrow"><label class="flabel">Username</label><div class="field mono">gusarov_oo</div></div>
+    <div class="formrow">
+      <label class="flabel">Auth</label>
+      <div class="radiogroup">
+        <div class="radio"><span class="box on"></span><span>Password</span></div>
+        <div class="radio"><span class="box"></span><span>SAML (browser)</span></div>
+      </div>
+    </div>
+    <div class="formrow">
+      <label class="flabel">Backend</label>
+      <div class="radiogroup">
+        <div class="radio"><span class="box on"></span><span>openconnect</span></div>
+        <div class="radio"><span class="box"></span><span>gpclient</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="check"><span class="box on"></span><span>Reuse saved login and password for repeated prompts</span></div>
+      <div class="hint" style="margin-left:24px;">Saved credentials will be reused when the portal asks again.</div>
+    </div>
+    <div style="flex:1"></div>
+    <div class="btnrow"><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+  </div>
+</div><div class="caption">08-portal-editor.png</div></div>
+
+<!-- ============ 09-settings ============ -->
+<div class="mock" id="m09"><div class="window">
+  <div class="titlebar"><button class="backbtn">&#8592; Back</button><span class="ttl">Settings</span></div>
+  <div class="content" style="gap:10px;">
+    <div class="formrow">
+      <label class="flabel">Theme</label>
+      <div class="radiogroup">
+        <div class="radio"><span class="box on"></span><span>System</span></div>
+        <div class="radio"><span class="box"></span><span>Light</span></div>
+        <div class="radio"><span class="box"></span><span>Dark</span></div>
+      </div>
+    </div>
+    <div style="border-top:1px solid #d8d8d8;padding-top:6px;">
+      <div class="check"><span class="box on"></span><span>Reconnect on unexpected drop</span></div>
+      <div class="check"><span class="box on"></span><span>Launch at login</span></div>
+      <div class="check"><span class="box"></span><span>Connect at login</span></div>
+      <div class="check"><span class="box on"></span><span>Close to tray</span></div>
+    </div>
+    <div style="border-top:1px solid #d8d8d8;padding-top:8px;display:flex;flex-direction:column;gap:8px;">
+      <div class="formrow">
+        <label class="flabel">openconnect binary</label>
+        <div class="field mono"><span class="ph">(empty)</span></div>
+        <div class="hint">Leave empty to use PATH.</div>
+      </div>
+      <div class="formrow">
+        <label class="flabel">gpclient binary</label>
+        <div class="field mono"><span class="ph">(empty)</span></div>
+        <div class="hint">Leave empty to use PATH.</div>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div class="btnrow"><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+  </div>
+</div><div class="caption">09-settings.png</div></div>
+
+<!-- ============ 10-log ============ -->
+<div class="mock" id="m10"><div class="window">
+  <div class="titlebar"><button class="backbtn">&#8592; Back</button><span class="ttl">Connection Log</span>
+    <span style="margin-left:auto"><button class="btn small">Copy</button></span></div>
+  <div class="content" style="gap:10px;">
+    <div class="statusline" style="padding:0 2px;"><span class="dot green"></span><span style="font-size:13px;font-weight:600">Connected &mdash; ETSP</span></div>
+    <div class="logbox"><span class="ts">[10:24:01]</span> Portal prelogin
+<span class="ts">[10:24:03]</span> Enter login credentials
+<span class="ts">[10:24:09]</span> <span class="sel">ESP session established with server</span>
+<span class="ts">[10:24:11]</span> HIP report submitted successfully
+<span class="ts">[10:24:12]</span> ESP tunnel connected</div>
+    <div class="hint">Log output can be selected and copied. Passwords are never written to the log.</div>
+  </div>
+  <div class="footerbar">
+    <button class="btn small" style="flex:1">Portals</button>
+    <button class="btn small" style="flex:1;border-color:var(--primary-dark);background:#e3ebf4;">Log</button>
+    <button class="btn small" style="flex:1">Settings</button>
+  </div>
+</div><div class="caption">10-log.png</div></div>
+
+<!-- ============ 11-empty-state ============ -->
+<div class="mock" id="m11"><div class="window">
+  <div class="titlebar"><span class="ttl">GPConnect</span>
+    <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close"></span></span></div>
+  <div class="content">
+    <div class="statusbox" style="flex:1;justify-content:center;gap:12px;">
+      <div class="statusline"><span class="dot gray"></span><span class="stext">Not Connected</span></div>
+      <div style="font-size:14px;font-weight:600;color:var(--text)">No portals configured</div>
+      <div class="ssub" style="max-width:280px;">Add a portal with its hostname and your username to connect to your corporate VPN.</div>
+      <button class="btn primary">Add portal&hellip;</button>
+    </div>
+  </div>
+  <div class="footerbar">
+    <button class="btn small" style="flex:1">Portals</button>
+    <button class="btn small disabled" style="flex:1">Log</button>
+    <button class="btn small" style="flex:1">Settings</button>
+  </div>
+</div><div class="caption">11-empty-state.png</div></div>
+
+<!-- ============ 12-portal-list ============ -->
+<div class="mock" id="m12"><div class="window">
+  <div class="titlebar"><button class="backbtn">&#8592; Back</button><span class="ttl">Portals</span></div>
+  <div class="content">
+    <div class="plist">
+      <div class="pitem selected">
+        <div class="radio"><span class="box on"></span></div>
+        <div class="pinfo"><div class="pname">ETSP</div><div class="pmeta">vpn.etsp.ru &mdash; gusarov_oo</div></div>
+        <div class="pacts"><button class="btn small">Edit</button><button class="btn small">Remove</button></div>
+      </div>
+      <div class="pitem">
+        <div class="radio"><span class="box"></span></div>
+        <div class="pinfo"><div class="pname">Omega</div><div class="pmeta">vpn.omega-corp.net &mdash; gusarov_oo</div></div>
+        <div class="pacts"><button class="btn small">Edit</button><button class="btn small">Remove</button></div>
+      </div>
+      <div class="pitem">
+        <div class="radio"><span class="box"></span></div>
+        <div class="pinfo"><div class="pname">Lab</div><div class="pmeta">192.168.10.4 &mdash; testuser</div></div>
+        <div class="pacts"><button class="btn small">Edit</button><button class="btn small">Remove</button></div>
+      </div>
+    </div>
+    <div class="hint">The selected portal is used when you press Connect.</div>
+    <button class="btn" style="width:100%">Add portal&hellip;</button>
+  </div>
+</div><div class="caption">12-portal-list.png</div></div>
+
+<!-- ============ 13-tray-disconnected ============ -->
+<div class="mock" id="m13"><div class="traywrap">
+  <div class="desktop"></div>
+  <div class="taskbar">
+    <span class="trayarea">
+      <span class="trayicon">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1 L14 3.4 V8 c0 3.6-2.5 6-6 7 c-3.5-1-6-3.4-6-7 V3.4 Z" fill="none" stroke="#9aa7b4" stroke-width="1.4"/><circle cx="8" cy="8" r="2.4" fill="#9aa7b4"/></svg>
+      </span>
+      <span class="clock">10:24</span>
+    </span>
+  </div>
+  <div class="tooltip" style="right:48px;bottom:64px;">GPConnect &mdash; Not connected</div>
+  <div class="traymenu">
+    <div class="tmhead">GPConnect</div>
+    <div class="mi disabled"><span class="dot gray" style="width:9px;height:9px;"></span>Not connected</div>
+    <div class="sep"></div>
+    <div class="mi hov">Show window</div>
+    <div class="mi">Connect</div>
+    <div class="sep"></div>
+    <div class="mi">Quit</div>
+  </div>
+</div><div class="caption">13-tray-disconnected.png</div></div>
+
+<!-- ============ 14-tray-connected ============ -->
+<div class="mock" id="m14"><div class="traywrap">
+  <div class="desktop"></div>
+  <div class="taskbar">
+    <span class="trayarea">
+      <span class="trayicon">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1 L14 3.4 V8 c0 3.6-2.5 6-6 7 c-3.5-1-6-3.4-6-7 V3.4 Z" fill="none" stroke="#7fd08c" stroke-width="1.4"/><circle cx="8" cy="8" r="2.4" fill="#2e8b3d"/></svg>
+      </span>
+      <span class="clock">10:31</span>
+    </span>
+  </div>
+  <div class="tooltip" style="right:48px;bottom:64px;">GPConnect &mdash; Connected to ETSP</div>
+  <div class="traymenu">
+    <div class="tmhead">GPConnect</div>
+    <div class="mi disabled"><span class="dot green" style="width:9px;height:9px;"></span>Connected to ETSP</div>
+    <div class="sep"></div>
+    <div class="mi hov">Show window</div>
+    <div class="mi">Disconnect</div>
+    <div class="sep"></div>
+    <div class="mi">Quit</div>
+  </div>
+</div><div class="caption">14-tray-connected.png</div></div>
+
+<!-- ============ 15-close-to-tray ============ -->
+<div class="mock" id="m15"><div style="display:flex;gap:24px;align-items:flex-start;">
+  <div>
+    <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">1. Window open &mdash; user presses Close</div>
+    <div class="window" style="width:360px;height:300px;">
+      <div class="titlebar"><span class="ttl">GPConnect</span>
+        <span class="winbtns"><span class="winbtn"></span><span class="winbtn"></span><span class="winbtn close" style="outline:2px solid #b0766e;"></span></span></div>
+      <div class="content" style="gap:10px;">
+        <div class="statusbox" style="padding:10px;">
+          <div class="statusline"><span class="dot green"></span><span class="stext" style="font-size:14px;">Connected</span></div>
+          <div class="ssub">ETSP &mdash; 172.16.25.238</div>
+        </div>
+        <div class="hint" style="text-align:center;">Close to tray is enabled in Settings.</div>
+        <div style="flex:1"></div>
+        <button class="btn big">Disconnect</button>
+      </div>
+    </div>
+  </div>
+  <div style="font-size:26px;color:#888;padding-top:150px;">&#8594;</div>
+  <div>
+    <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">2. Window closed &mdash; VPN keeps running</div>
+    <div class="traywrap" style="width:360px;">
+      <div class="desktop" style="height:150px;"></div>
+      <div class="taskbar">
+        <span class="trayarea">
+          <span class="trayicon">
+            <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1 L14 3.4 V8 c0 3.6-2.5 6-6 7 c-3.5-1-6-3.4-6-7 V3.4 Z" fill="none" stroke="#7fd08c" stroke-width="1.4"/><circle cx="8" cy="8" r="2.4" fill="#2e8b3d"/></svg>
+          </span>
+          <span class="clock">10:32</span>
+        </span>
+      </div>
+      <div class="tooltip" style="right:14px;bottom:56px;">GPConnect &mdash; Connected to ETSP</div>
+    </div>
+    <div class="hint" style="max-width:360px;margin-top:6px;">The window is closed, but GPConnect stays in the tray and the tunnel remains up.</div>
+  </div>
+</div><div class="caption">15-close-to-tray.png</div></div>
+
+<!-- ============ 16-login-options ============ -->
+<div class="mock" id="m16"><div class="window">
+  <div class="titlebar"><button class="backbtn">&#8592; Back</button><span class="ttl">Settings</span></div>
+  <div class="content" style="gap:8px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px;">Startup</div>
+    <div class="check"><span class="box on"></span><span>Launch at login</span></div>
+    <div>
+      <div class="check"><span class="box on"></span><span>Connect at login</span></div>
+      <div class="hint" style="margin-left:24px;">Connects to the last used portal when the application starts.</div>
+    </div>
+    <div class="check"><span class="box on"></span><span>Close to tray</span></div>
+    <div style="border-top:1px solid #d8d8d8;margin-top:6px;padding-top:8px;">
+      <div class="hint">Launch at login and Connect at login work together: the app starts with the system and immediately brings up the last used portal.</div>
+    </div>
+    <div style="flex:1"></div>
+    <div class="btnrow"><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+  </div>
+</div><div class="caption">16-login-options.png</div></div>
+
+</body>
+</html>
