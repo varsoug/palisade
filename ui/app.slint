@@ -183,8 +183,8 @@ export component AppWindow inherits Window {
     callback quit();
 
     title: "Palisade";
-    width: 460px;
-    height: 560px;
+    width: 500px;
+    height: 660px;
     background: AppPalette.window-bg;
     default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
 
@@ -250,7 +250,7 @@ export component AppWindow inherits Window {
             HorizontalLayout { padding-left: 10px; padding-right: 16px; spacing: 10px;
                 SmallButton { text: "Portals"; horizontal-stretch: 1; selected: root.active-tab == 0; clicked => { root.active-tab = 0; } }
                 SmallButton { text: "Log"; horizontal-stretch: 1; selected: root.active-tab == 1; clicked => { root.active-tab = 1; } }
-                SmallButton { text: "Settings…"; clicked => { root.settings-open = true; } }
+                SmallButton { text: "Settings"; horizontal-stretch: 1; selected: root.active-tab == 2; clicked => { root.active-tab = 2; } }
             }
         }
 
@@ -266,27 +266,27 @@ export component AppWindow inherits Window {
             LogView { x: 16px; y: 16px; width: root.width - 32px; height: root.height - 122px;
                 log-text: root.log-text; lines: root.log-lines; status-title: root.log-status; status-dot: root.status-dot; copy => { root.copy-log(); } }
         }
+
+        if root.active-tab == 2: Rectangle {
+            background: AppPalette.window-bg;
+            SettingsDialog {
+                x: 16px; y: 16px; width: root.width - 32px; height: root.height - 122px;
+                theme: root.theme; reconnect: root.reconnect; launch-at-login: root.launch-at-login;
+                connect-at-login: root.connect-at-login; close-to-tray: root.close-to-tray;
+                openconnect-bin: root.openconnect-bin; gpclient-bin: root.gpclient-bin;
+                startup-only: root.settings-startup-only;
+                save => { root.save-settings(); } cancel => { root.close-settings(); }
+            }
+        }
     }
 
 
     dialog-overlay := Rectangle {
-        visible: root.settings-open || root.password-open || root.verification-open || root.portal-editor-open;
+        visible: root.password-open || root.verification-open || root.portal-editor-open;
         background: #80000000;
         TouchArea { clicked => { } }
     }
 
-    settings-popup := PopupWindow {
-        close-policy: PopupClosePolicy.no-auto-close;
-        width: min(460px, root.width);
-        height: min(560px, root.height);
-        if root.settings-open: SettingsDialog {
-            theme: root.theme; reconnect: root.reconnect; launch-at-login: root.launch-at-login;
-            connect-at-login: root.connect-at-login; close-to-tray: root.close-to-tray;
-            openconnect-bin: root.openconnect-bin; gpclient-bin: root.gpclient-bin;
-            startup-only: root.settings-startup-only;
-            save => { root.save-settings(); } cancel => { root.close-settings(); }
-        }
-    }
     password-prompt := PopupWindow {
         close-policy: PopupClosePolicy.no-auto-close;
         width: min(380px, root.width);
