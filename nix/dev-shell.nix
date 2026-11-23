@@ -15,11 +15,18 @@
 , libxrandr
 , libxi
 , libxext
+, fontconfig
+, freetype
 , openconnect
 }:
 
 mkShell {
-  packages = [ cargo rustc clippy rustfmt pkg-config openssl dbus.dev openconnect ];
+  env = {
+    NIX_LDFLAGS = "";
+    LIBRARY_PATH = lib.makeLibraryPath [ fontconfig freetype ];
+  };
+
+  packages = [ cargo rustc clippy rustfmt pkg-config openssl dbus.dev fontconfig.dev freetype.dev openconnect ];
 
   LD_LIBRARY_PATH = lib.makeLibraryPath [
     libGL
@@ -30,6 +37,8 @@ mkShell {
     libxrandr
     libxi
     libxext
+    fontconfig
+    freetype
   ];
 
   shellHook = ''

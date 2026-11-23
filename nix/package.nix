@@ -12,6 +12,8 @@
 , libxrandr
 , libxi
 , libxext
+, fontconfig
+, freetype
 , openconnect
 }:
 
@@ -29,7 +31,7 @@ rustPlatform.buildRustPackage rec {
   cargoLock.lockFile = ../Cargo.lock;
 
   nativeBuildInputs = [ pkg-config makeWrapper ];
-  buildInputs = [ openssl dbus.dev ];
+  buildInputs = [ openssl dbus.dev fontconfig.dev freetype.dev ];
 
   runtimeLibs = lib.makeLibraryPath [
     libGL
@@ -40,6 +42,8 @@ rustPlatform.buildRustPackage rec {
     libxrandr
     libxi
     libxext
+    fontconfig
+    freetype
   ];
 
   postInstall = ''
