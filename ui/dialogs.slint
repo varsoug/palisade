@@ -1,16 +1,7 @@
 import { Button, CheckBox, LineEdit, TextEdit } from "std-widgets.slint";
-import { Palette, StatusDot, PrimaryButton, SmallButton, FieldLabel, SectionTitle } from "theme.slint";
+import { AppPalette as Palette, StatusDot, PrimaryButton, SmallButton, FieldLabel, SectionTitle } from "theme.slint";
 
-global PortalInfo {
-    in-out property <string> name;
-    in-out property <string> host;
-    in-out property <string> username;
-    in-out property <string> auth;
-    in-out property <string> backend;
-    in-out property <bool> reuse;
-}
-
-export component PortalEditorDialog inherits Window {
+export component PortalEditorDialog inherits Rectangle {
     in-out property <bool> is-new: true;
     in-out property <string> name;
     in-out property <string> host;
@@ -23,11 +14,6 @@ export component PortalEditorDialog inherits Window {
     callback save();
     callback cancel();
 
-    title: "Palisade";
-    width: 460px;
-    height: 560px;
-    background: Palette.window-bg;
-    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
 
     VerticalLayout {
         Rectangle {
@@ -77,7 +63,7 @@ export component PortalEditorDialog inherits Window {
     }
 }
 
-export component PasswordDialog inherits Window {
+export component PasswordDialog inherits Rectangle {
     in-out property <string> portal-name;
     in-out property <string> portal-host;
     in-out property <string> username;
@@ -87,11 +73,6 @@ export component PasswordDialog inherits Window {
     callback connect();
     callback cancel();
 
-    title: "Palisade";
-    width: 380px;
-    height: 260px;
-    background: Palette.window-bg;
-    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
 
     VerticalLayout {
         Rectangle {
@@ -108,8 +89,8 @@ export component PasswordDialog inherits Window {
         VerticalLayout { padding: 14px; spacing: 10px;
             Text { text: "Portal: \{root.portal-name} (\{root.portal-host})"; color: Palette.text-dim; font-size: 12px; }
             FieldLabel { text: "Password for \{root.username}"; }
-            Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
-                LineEdit { text <=> root.password; font-size: 13px;
+            Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: Palette.field-bg;
+                LineEdit { text <=> root.password; input-type: InputType.password; font-size: 13px;
                     accepted => { root.connect(); } } }
             CheckBox { text: "Remember in system keyring"; checked <=> root.remember; }
             Rectangle { vertical-stretch: 1; }
@@ -122,18 +103,13 @@ export component PasswordDialog inherits Window {
     }
 }
 
-export component VerificationDialog inherits Window {
+export component VerificationDialog inherits Rectangle {
     in-out property <string> message;
     in-out property <string> code;
 
     callback submit();
     callback cancel();
 
-    title: "Palisade";
-    width: 340px;
-    height: 200px;
-    background: Palette.window-bg;
-    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
 
     VerticalLayout {
         Rectangle {
@@ -162,7 +138,7 @@ export component VerificationDialog inherits Window {
     }
 }
 
-export component SettingsDialog inherits Window {
+export component SettingsDialog inherits Rectangle {
     in-out property <int> theme: 0;
     in-out property <bool> reconnect: true;
     in-out property <bool> launch-at-login;
@@ -175,11 +151,6 @@ export component SettingsDialog inherits Window {
     callback save();
     callback cancel();
 
-    title: "Palisade";
-    width: 460px;
-    height: 560px;
-    background: Palette.window-bg;
-    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
 
     VerticalLayout {
         Rectangle {

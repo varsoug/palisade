@@ -1,4 +1,9 @@
+mod autostart;
 mod bridge;
+#[cfg(unix)]
+mod privilege;
+mod single_instance;
+mod tray;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -14,7 +19,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 
 slint::include_modules!();
 
-use bridge::{portal_valid, status_for, strip_ansi};
+use bridge::{credential_valid, portal_valid, prompt_hint, status_for, strip_ansi};
 
 const MAX_LOG_LINES: usize = 500;
 
@@ -29,8 +34,11 @@ struct Controller {
     selected: Option<usize>,
     challenge: Option<String>,
     password_portal: Option<usize>,
-    editing: Option<Option<usize>>,
+    editing: Option<usize>,
     notice: Option<String>,
+    tray: Option<tray::TrayHandle>,
+    hidden_to_tray: bool,
+    quitting: bool,
 }
 
 impl Controller {
@@ -54,10 +62,17 @@ impl Controller {
             password_portal: None,
             editing: None,
             notice: None,
+            tray: tray::TrayHandle::start(),
+            hidden_to_tray: false,
+            quitting: false,
         };
         c.refresh_portals();
         c.refresh_status();
         c.refresh_settings();
+        c.apply_theme();
+        if let Some(tray) = c.tray.as_ref() {
+            tray.attach(&c.ui);
+        }
         if c.config.settings.connect_at_startup {
             c.start_connect();
         }
@@ -69,10 +84,6 @@ impl Controller {
     }
 
     fn refresh_portals(&mut self) {
-        let (_, _) = bridge::settings_surface_decision(
-            self.ui.get_active_tab(),
-            self.ui.get_settings_open(),
-        );
         let names: Vec<SharedString> = self
             .config
             .portals
@@ -83,33 +94,44 @@ impl Controller {
             .config
             .portals
             .iter()
-            .map(|p| SharedString::from(format!("{} — {}", p.portal, p.username)))
+            .map(|p| SharedString::from(format!("{} — {}", p.name, p.portal)))
             .collect();
-        let selected = self.selected.unwrap_or(0) as i32;
         self.ui
             .set_portal_names(ModelRc::new(VecModel::from(names)));
         self.ui
             .set_portal_metas(ModelRc::new(VecModel::from(metas)));
-        self.ui.set_selected_portal(selected);
+        self.ui
+            .set_selected_portal(self.selected.unwrap_or(0) as i32);
         self.ui.set_empty(self.config.portals.is_empty());
         if self.config.portals.is_empty() {
             let (heading, cta) = bridge::empty_state_text();
             self.ui.set_status_title(SharedString::from(heading));
             self.ui.set_message(SharedString::from(cta));
         }
+        let portal = self.selected_portal();
         self.ui.set_portal_label(
-            self.selected_portal()
+            portal
                 .map(|p| SharedString::from(format!("{} ({})", p.name, p.portal)))
                 .unwrap_or_else(|| SharedString::from("Select a portal")),
         );
+        self.ui.set_portal_name(
+            portal
+                .map(|p| SharedString::from(p.name.as_str()))
+                .unwrap_or_default(),
+        );
         self.ui.set_portal_host(
-            self.selected_portal()
+            portal
                 .map(|p| SharedString::from(p.portal.as_str()))
+                .unwrap_or_default(),
+        );
+        self.ui.set_username(
+            portal
+                .map(|p| SharedString::from(p.username.as_str()))
                 .unwrap_or_default(),
         );
     }
 
-    fn refresh_status(&self) {
+    fn refresh_status(&mut self) {
         let (title, subtitle, dot) = status_for(&self.state);
         let subtitle = if matches!(
             self.state,
@@ -169,9 +191,28 @@ impl Controller {
                 .map(SharedString::from)
                 .unwrap_or_default(),
         );
+        self.refresh_prompt_state();
     }
 
-    fn refresh_log(&mut self) {
+    fn refresh_prompt_state(&mut self) {
+        let prompting = self.password_portal.is_some() || self.challenge.is_some();
+        let saml_waiting = self.saml_waiting();
+        self.ui.set_prompting(prompting);
+        self.ui.set_saml_waiting(saml_waiting);
+        self.ui
+            .set_prompt_message(SharedString::from(prompt_hint(prompting, saml_waiting)));
+    }
+
+    fn saml_waiting(&self) -> bool {
+        matches!(
+            self.state,
+            ConnState::Authenticating | ConnState::Connecting
+        ) && self
+            .selected_portal()
+            .is_some_and(|p| p.auth == AuthMode::Saml)
+    }
+
+    fn refresh_log(&self) {
         let lines: Vec<SharedString> = self
             .logs
             .iter()
@@ -205,6 +246,11 @@ impl Controller {
             .set_gpclient_bin(SharedString::from(s.gpclient_bin.as_str()));
     }
 
+    fn apply_theme(&self) {
+        let palette = self.ui.global::<AppPalette>();
+        palette.set_dark(matches!(self.config.settings.theme, Theme::Dark));
+    }
+
     fn save_config(&mut self) {
         if let Err(e) = self.config.save() {
             self.notice = Some(format!("Failed to save config: {e}"));
@@ -225,37 +271,79 @@ impl Controller {
         self.save_config();
         if portal.auth == AuthMode::Password {
             if let Some(pw) = get_password(&portal.portal, &portal.username) {
-                let bin = self.config.settings.bin_for(&portal.backend);
-                let _ = self.session.connect(portal, Some(pw), bin);
+                self.connect_with_password(idx, pw, false);
                 return;
             }
             self.password_portal = Some(idx);
+            self.ui
+                .set_portal_name(SharedString::from(portal.name.as_str()));
+            self.ui
+                .set_portal_host(SharedString::from(portal.portal.as_str()));
+            self.ui
+                .set_username(SharedString::from(portal.username.as_str()));
             self.ui.set_password(SharedString::from(""));
             self.ui.set_remember(true);
             self.ui.set_password_open(true);
+            self.refresh_prompt_state();
             return;
         }
-        let bin = self.config.settings.bin_for(&portal.backend);
-        let _ = self.session.connect(portal, None, bin);
+        self.connect_with_password(idx, String::new(), false);
     }
 
-    fn submit_password(&mut self) {
-        let Some(idx) = self.password_portal.take() else {
-            self.ui.set_password_open(false);
-            return;
-        };
-        let password = self.ui.get_password().to_string();
-        let remember = self.ui.get_remember();
+    fn connect_with_password(&mut self, idx: usize, password: String, remember: bool) {
         let Some(portal) = self.config.portals.get(idx).cloned() else {
             return;
         };
-        if remember && bridge::password_store_decision(remember) {
+        if remember {
             let _ = store_password(&portal.portal, &portal.username, &password);
         }
+        self.password_portal = None;
         self.ui.set_password_open(false);
         self.ui.set_password(SharedString::from(""));
+        self.selected = Some(idx);
+        self.refresh_prompt_state();
         let bin = self.config.settings.bin_for(&portal.backend);
         let _ = self.session.connect(portal, Some(password), bin);
+    }
+
+    fn submit_password(&mut self) {
+        let Some(idx) = self.password_portal else {
+            self.ui.set_password_open(false);
+            self.refresh_prompt_state();
+            return;
+        };
+        let password = self.ui.get_password().to_string();
+        if !credential_valid(&password) {
+            self.notice = Some("Enter a password to connect.".into());
+            self.refresh_status();
+            return;
+        }
+        let remember = self.ui.get_remember();
+        self.connect_with_password(idx, password, remember);
+    }
+
+    fn cancel_password(&mut self) {
+        self.password_portal = None;
+        self.ui.set_password_open(false);
+        self.ui.set_password(SharedString::from(""));
+        self.notice = None;
+        self.refresh_status();
+    }
+
+    fn submit_challenge(&mut self) {
+        let mut code = self.ui.get_verification_code().to_string();
+        code.retain(|c| !c.is_whitespace());
+        if !credential_valid(&code) {
+            self.notice = Some("Enter the verification code.".into());
+            self.refresh_status();
+            return;
+        }
+        self.challenge = None;
+        self.ui.set_verification_open(false);
+        self.ui.set_verification_code(SharedString::from(""));
+        self.notice = None;
+        let _ = self.session.respond(&code);
+        self.refresh_status();
     }
 
     fn drain_events(&mut self) {
@@ -290,6 +378,38 @@ impl Controller {
         self.refresh_log();
     }
 
+    fn handle_tray(&mut self) {
+        let Some(tray) = &self.tray else { return };
+        let dark = matches!(self.config.settings.theme, Theme::Dark);
+        tray.set_state(tray::TrayState::from_conn(&self.state), dark);
+        for action in tray.take_actions() {
+            match action {
+                tray::TrayAction::ShowWindow => {
+                    self.ui.show().unwrap_or_default();
+                    self.hidden_to_tray = false;
+                }
+                tray::TrayAction::Quit => {
+                    self.quitting = true;
+                    slint::quit_event_loop().unwrap_or_default();
+                }
+                tray::TrayAction::Connect => {
+                    let busy = matches!(
+                        self.state,
+                        ConnState::Authenticating | ConnState::Connecting | ConnState::Connected(_)
+                    );
+                    if !busy {
+                        self.start_connect();
+                    }
+                    self.ui.show().unwrap_or_default();
+                    self.hidden_to_tray = false;
+                }
+                tray::TrayAction::Disconnect => {
+                    self.session.disconnect();
+                }
+            }
+        }
+    }
+
     fn open_editor(&mut self, idx: Option<usize>) {
         let (name, host, username, saml, gpclient, reuse) =
             match idx.and_then(|i| self.config.portals.get(i)) {
@@ -310,8 +430,7 @@ impl Controller {
                     true,
                 ),
             };
-        self.editing = Some(idx);
-        self.ui.set_portal_editor_new(idx.is_none());
+        self.editing = idx;
         self.ui.set_editor_name(SharedString::from(name.as_str()));
         self.ui.set_editor_host(SharedString::from(host.as_str()));
         self.ui
@@ -354,7 +473,7 @@ impl Controller {
             reuse_credentials: self.ui.get_editor_reuse(),
         };
         match self.editing.take() {
-            Some(Some(idx)) if idx < self.config.portals.len() => {
+            Some(idx) if idx < self.config.portals.len() => {
                 let old = &self.config.portals[idx];
                 if old.portal != portal.portal || old.username != portal.username {
                     let _ = delete_password(&old.portal, &old.username);
@@ -402,12 +521,29 @@ impl Controller {
         s.close_to_tray = self.ui.get_close_to_tray();
         s.openconnect_bin = self.ui.get_openconnect_bin().to_string();
         s.gpclient_bin = self.ui.get_gpclient_bin().to_string();
+        let autostart = s.autostart;
         self.ui.set_settings_open(false);
         self.save_config();
+        self.apply_theme();
+        if let Err(e) = autostart::apply(autostart) {
+            self.notice = Some(e);
+        }
+        self.refresh_status();
     }
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    std::env::set_var("SLINT_BACKEND", "winit-skia-software");
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
+    let _instance = single_instance::claim();
+    #[cfg(unix)]
+    let _helper = privilege::start_helper();
+
     let ui = AppWindow::new()?;
 
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<ConnEvent>();
@@ -430,7 +566,12 @@ fn main() -> Result<(), slint::PlatformError> {
         slint::TimerMode::Repeated,
         std::time::Duration::from_millis(50),
         move || {
-            pump.borrow_mut().drain_events();
+            let mut c = pump.borrow_mut();
+            c.drain_events();
+            c.handle_tray();
+            if c.hidden_to_tray && !c.quitting {
+                c.ui.hide().unwrap_or_default();
+            }
         },
     );
 
@@ -460,28 +601,23 @@ fn main() -> Result<(), slint::PlatformError> {
     let c = controller.clone();
     ui.on_portal_save(move || c.borrow_mut().save_editor());
     let c = controller.clone();
-    ui.on_portal_cancel(move || c.borrow_mut().ui.set_portal_editor_open(false));
+    ui.on_portal_cancel(move || {
+        let mut c = c.borrow_mut();
+        c.editing = None;
+        c.ui.set_portal_editor_open(false);
+    });
     let c = controller.clone();
     ui.on_password_submit(move || c.borrow_mut().submit_password());
     let c = controller.clone();
-    ui.on_password_cancel(move || {
-        c.borrow_mut().password_portal = None;
-        c.borrow().ui.set_password_open(false);
-    });
+    ui.on_password_cancel(move || c.borrow_mut().cancel_password());
     let c = controller.clone();
-    ui.on_verification_submit(move || {
-        let mut c = c.borrow_mut();
-        if let Some(code) = c.ui.get_verification_code().to_string().into() {
-            let _ = c.session.respond(&code);
-        }
-        c.challenge = None;
-        c.ui.set_verification_open(false);
-    });
+    ui.on_verification_submit(move || c.borrow_mut().submit_challenge());
     let c = controller.clone();
     ui.on_verification_cancel(move || {
         let mut c = c.borrow_mut();
         c.challenge = None;
         c.ui.set_verification_open(false);
+        c.refresh_prompt_state();
     });
     let c = controller.clone();
     ui.on_copy_log(move || {
@@ -494,7 +630,22 @@ fn main() -> Result<(), slint::PlatformError> {
     let c = controller.clone();
     ui.on_save_settings(move || c.borrow_mut().save_settings());
     let c = controller.clone();
-    ui.on_close_settings(move || c.borrow().ui.set_settings_open(false));
+    ui.on_close_settings(move || {
+        let c = c.borrow();
+        c.ui.set_settings_open(false);
+        c.refresh_settings();
+    });
+    let c = controller.clone();
+    ui.on_show_window(move || {
+        let c = c.borrow();
+        c.ui.show().unwrap_or_default();
+    });
+    let c = controller.clone();
+    ui.on_quit(move || {
+        let mut c = c.borrow_mut();
+        c.quitting = true;
+        slint::quit_event_loop().unwrap_or_default();
+    });
 
     let result = ui.run();
     controller.borrow().session.disconnect();

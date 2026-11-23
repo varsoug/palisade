@@ -71,14 +71,20 @@ pub fn strip_ansi(line: &str) -> String {
     out.trim_end().to_string()
 }
 
-pub fn password_store_decision(remember: bool) -> bool {
-    remember
+/// Reject blank credentials and verification codes before they reach the session.
+pub fn credential_valid(value: &str) -> bool {
+    !value.trim().is_empty()
 }
 
-/// Settings is an inline tab; the separate startup-only dialog is reserved for
-/// externally requested first-run/startup configuration.
-pub fn settings_surface_decision(active_tab: i32, settings_open: bool) -> (bool, bool) {
-    (settings_open && active_tab != 2, active_tab == 2)
+/// Map a prompt state to the short notice shown under the form.
+pub fn prompt_hint(prompting: bool, saml_waiting: bool) -> &'static str {
+    if prompting {
+        "Waiting for your credentials…"
+    } else if saml_waiting {
+        "Waiting for browser authentication…"
+    } else {
+        ""
+    }
 }
 
 /// Copy the full log text; callers pass only already-sanitized lines.
@@ -144,12 +150,6 @@ mod tests {
     }
 
     #[test]
-    fn password_storage_only_when_remember_is_checked() {
-        assert!(password_store_decision(true));
-        assert!(!password_store_decision(false));
-    }
-
-    #[test]
     fn config_save_roundtrip_preserves_portal_and_settings() {
         let mut cfg = palisade_core::AppConfig::default();
         cfg.portals.push(palisade_core::PortalConfig {
@@ -186,10 +186,18 @@ mod tests {
     }
 
     #[test]
-    fn settings_tab_opens_inline_settings_panel() {
-        let (needs_dialog, opens_inline) = settings_surface_decision(2, false);
-        assert!(!needs_dialog);
-        assert!(opens_inline);
+    fn credential_validation_rejects_empty_values() {
+        assert!(!credential_valid(""));
+    }
+
+    #[test]
+    fn prompt_hint_reports_credentials_and_browser_waits() {
+        assert_eq!(prompt_hint(true, false), "Waiting for your credentials…");
+        assert_eq!(
+            prompt_hint(false, true),
+            "Waiting for browser authentication…"
+        );
+        assert_eq!(prompt_hint(false, false), "");
     }
 
     #[test]

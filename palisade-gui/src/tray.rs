@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use ksni::blocking::TrayMethods as _;
 use ksni::{menu::StandardItem, Tray};
 use palisade_core::ConnState;
+use slint::{ComponentHandle, Weak};
 
 /// What the tray should tell the user right now.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -68,7 +69,7 @@ struct Shared {
     actions: Vec<TrayAction>,
     /// Wakes the GUI loop. Without it a click only lands when the next frame
     /// happens to run, which never happens while the window sleeps.
-    wake: Option<egui::Context>,
+    wake: Option<Weak<crate::AppWindow>>,
     /// Whether the desktop is in dark mode (selects white icons).
     dark: bool,
 }
@@ -252,8 +253,8 @@ impl GpConnectTray {
             s.actions.push(action);
             s.wake.clone()
         };
-        if let Some(ctx) = wake {
-            ctx.request_repaint();
+        if let Some(ui) = wake.and_then(|w| w.upgrade()) {
+            ui.show().unwrap_or_default();
         }
     }
 }
@@ -308,8 +309,8 @@ impl TrayHandle {
     }
 
     /// Hand the tray a context it can use to wake the GUI.
-    pub fn attach(&self, ctx: egui::Context) {
-        self.shared.lock().unwrap_or_else(|e| e.into_inner()).wake = Some(ctx);
+    pub fn attach(&self, ui: &crate::AppWindow) {
+        self.shared.lock().unwrap_or_else(|e| e.into_inner()).wake = Some(ui.as_weak());
     }
 
     pub fn take_actions(&self) -> Vec<TrayAction> {

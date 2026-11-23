@@ -41,11 +41,6 @@ pub fn apply(enabled: bool) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| format!("could not write autostart entry: {e}"))
 }
 
-/// Whether an autostart entry currently exists.
-pub fn is_enabled() -> bool {
-    entry_path().map(|p| p.exists()).unwrap_or(false)
-}
-
 fn entry_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
