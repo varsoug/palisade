@@ -1,0 +1,238 @@
+import { Button, CheckBox, LineEdit, TextEdit } from "std-widgets.slint";
+import { Palette, StatusDot, PrimaryButton, SmallButton, FieldLabel, SectionTitle } from "theme.slint";
+import { SettingsDialog } from "dialogs.slint";
+
+component StatusCard inherits Rectangle {
+    in property <color> dot-color: Palette.gray;
+    in property <string> title: "Not Connected";
+    in property <string> subtitle: "Select a portal and press Connect.";
+    in property <string> error-message;
+    in property <bool> show-error: false;
+    in property <bool> show-details: false;
+    in property <string> portal-name;
+    in property <string> username;
+    in property <string> tunnel-ip;
+    in property <bool> show-cta: false;
+
+    callback add-portal();
+
+    background: Palette.panel-bg;
+    border-width: 1px;
+    border-color: Palette.panel-border;
+    border-radius: 6px;
+
+    VerticalLayout {
+        padding: 16px;
+        alignment: center;
+        spacing: 8px;
+        HorizontalLayout { spacing: 9px; alignment: center;
+            StatusDot { dot-color: root.dot-color; }
+            Text { text: root.title; color: Palette.text; font-size: 16px; font-weight: 700; vertical-alignment: center; }
+        }
+        if root.show-error: Rectangle {
+            border-width: 1px; border-color: Palette.error-border; background: Palette.error-bg; border-radius: 6px;
+            HorizontalLayout { padding-left: 8px; padding-right: 12px; spacing: 8px;
+                Text { text: "!"; color: Palette.error-text; font-weight: 700; }
+                Text { text: root.error-message; color: Palette.error-text; font-size: 13px; wrap: word-wrap; }
+            }
+        }
+        if !root.show-error: Text { text: root.subtitle; color: Palette.text-dim; font-size: 12px; horizontal-alignment: center; wrap: word-wrap; }
+        if root.show-details: Rectangle {
+            border-width: 1px; border-color: Palette.panel-border; background: #fbfbfb; border-radius: 6px;
+            VerticalLayout { padding-left: 6px; padding-right: 12px;
+                HorizontalLayout { Text { text: "Portal"; color: Palette.text-dim; font-size: 13px; } Rectangle { horizontal-stretch: 1; } Text { text: root.portal-name; color: Palette.text; font-size: 13px; } }
+                Rectangle { height: 1px; background: #dedede; }
+                HorizontalLayout { Text { text: "Username"; color: Palette.text-dim; font-size: 13px; } Rectangle { horizontal-stretch: 1; } Text { text: root.username; color: Palette.text; font-size: 13px; } }
+                Rectangle { height: 1px; background: #dedede; }
+                HorizontalLayout { Text { text: "Tunnel IP"; color: Palette.text-dim; font-size: 13px; } Rectangle { horizontal-stretch: 1; } Text { text: root.tunnel-ip; color: Palette.text; font-size: 13px; } }
+            }
+        }
+        if root.show-cta: VerticalLayout { spacing: 10px; alignment: center;
+            Text { text: "No portals configured"; color: Palette.text; font-size: 14px; font-weight: 700; horizontal-alignment: center; }
+            Text { text: "Add a portal with its hostname and your username to connect to your corporate VPN."; color: Palette.text-dim; font-size: 12px; horizontal-alignment: center; wrap: word-wrap; }
+            PrimaryButton { text: "Add portal…"; emphasized: true; max-width: 140px; clicked => { root.add-portal(); } }
+        }
+    }
+}
+
+component PortalList inherits VerticalLayout {
+    in property <[string]> names;
+    in property <[string]> metas;
+    in property <int> selected;
+    callback select(int);
+    callback edit(int);
+    callback remove(int);
+    callback add();
+    spacing: 10px;
+
+    Flickable { vertical-stretch: 1; viewport-height: Math.max(360px, root.names.length * 74px);
+        VerticalLayout { spacing: 10px;
+            for name[i] in root.names: Rectangle {
+                border-width: 1px; border-color: i == root.selected ? Palette.primary : #cfcfcf;
+                background: i == root.selected ? Palette.selection : #fbfbfb; border-radius: 6px;
+                HorizontalLayout { padding-left: 10px; padding-right: 12px; spacing: 10px;
+                    CheckBox { checked: i == root.selected; toggled => { root.select(i); } }
+                    VerticalLayout { horizontal-stretch: 1;
+                        Text { text: root.names[i]; color: Palette.text; font-size: 13px; font-weight: 700; }
+                        Text { text: root.metas[i]; color: Palette.text-dim; font-size: 11px; }
+                    }
+                    SmallButton { text: "Edit"; clicked => { root.edit(i); } }
+                    SmallButton { text: "Remove"; clicked => { root.remove(i); } }
+                }
+            }
+        }
+    }
+    Text { text: "The selected portal is used when you press Connect."; color: Palette.text-dim; font-size: 11px; }
+    SmallButton { text: "Add portal…"; clicked => { root.add(); } }
+}
+
+component LogView inherits Rectangle {
+    in property <[string]> lines;
+    in property <string> log-text;
+    in property <string> status-title;
+    in property <color> status-dot: Palette.green;
+    callback copy();
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        HorizontalLayout { spacing: 9px;
+            StatusDot { dot-color: root.status-dot; }
+            Text { text: root.status-title; color: Palette.text; font-size: 13px; font-weight: 700; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            SmallButton { text: "Copy"; clicked => { root.copy(); } }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            background: #ffffff; border-width: 1px; border-color: Palette.button-border; border-radius: 5px;
+            Flickable { viewport-height: Math.max(560px, root.lines.length * 22px);
+                TextEdit { x: 10px; y: 8px; width: root.width - 20px; text: root.log-text; read-only: true; font-size: 11px; }
+            }
+        }
+        Text { text: "Log output can be selected and copied. Passwords are never written to the log."; color: Palette.text-dim; font-size: 11px; wrap: word-wrap; }
+    }
+}
+
+export component AppWindow inherits Window {
+    in-out property <[string]> portal-names;
+    in-out property <[string]> portal-metas;
+    in-out property <int> selected-portal;
+    in-out property <string> portal-label: "Select a portal";
+    in-out property <string> status-title: "Not Connected";
+    in-out property <string> status-subtitle: "Select a portal and press Connect.";
+    in-out property <string> error-message;
+    in-out property <color> status-dot: Palette.gray;
+    in-out property <bool> connected: false;
+    in-out property <bool> busy: false;
+    in-out property <bool> empty: false;
+    in-out property <bool> show-details: false;
+    in-out property <string> username;
+    in-out property <string> tunnel-ip;
+    in-out property <[string]> log-lines;
+    in-out property <string> log-text;
+    
+    in-out property <string> log-status;
+    in-out property <int> active-tab: 0;
+    in-out property <bool> settings-open: false;
+    in-out property <bool> settings-startup-only: false;
+    in-out property <int> theme: 0;
+    in-out property <bool> reconnect: true;
+    in-out property <bool> launch-at-login;
+    in-out property <bool> connect-at-login;
+    in-out property <bool> close-to-tray;
+    in-out property <string> openconnect-bin;
+    in-out property <string> gpclient-bin;
+    in-out property <string> message;
+
+    callback connect();
+    callback disconnect();
+    callback select-portal(int);
+    callback add-portal();
+    callback edit-portal(int);
+    callback remove-portal(int);
+    callback copy-log();
+    callback save-settings();
+    callback close-settings();
+
+    title: "Palisade";
+    width: 460px;
+    height: 560px;
+    background: Palette.window-bg;
+    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
+
+    VerticalLayout {
+        Rectangle {
+            height: 68px;
+            background: Palette.header-bg;
+            border-width: 1px;
+            border-color: Palette.border;
+            VerticalLayout { padding-left: 12px; padding-right: 12px; padding-top: 4px; padding-bottom: 4px; spacing: 2px;
+                Text { text: "Palisade"; color: Palette.text; font-size: 13px; font-weight: 700; vertical-alignment: center; }
+                if !root.empty: Rectangle {
+                    border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff; opacity: root.busy ? 0.55 : 1;
+                    HorizontalLayout { padding-left: 4px; padding-right: 9px;
+                        Text { text: root.portal-label; color: Palette.text; font-size: 13px; vertical-alignment: center; }
+                        Rectangle { horizontal-stretch: 1; }
+                        Text { text: "▾"; color: Palette.text-dim; font-size: 11px; vertical-alignment: center; }
+                    }
+                    TouchArea { clicked => { root.select-portal(Math.mod(root.selected-portal + 1, Math.max(1, root.portal-names.length))); } }
+                }
+            }
+        }
+
+        VerticalLayout { padding: 16px; spacing: 14px;
+            StatusCard {
+                vertical-stretch: 1;
+                dot-color: root.status-dot;
+                title: root.status-title;
+                subtitle: root.status-subtitle;
+                error-message: root.error-message;
+                show-error: root.status-title == "Error";
+                show-details: root.show-details;
+                portal-name: root.portal-label;
+                username: root.username;
+                tunnel-ip: root.tunnel-ip;
+                show-cta: root.empty;
+                add-portal => { root.add-portal(); }
+            }
+            if !root.empty: PrimaryButton {
+                text: root.connected || root.busy ? "Disconnect" : "Connect";
+                emphasized: !(root.connected || root.busy);
+                clicked => { if root.connected || root.busy { root.disconnect(); } else { root.connect(); } }
+            }
+            if !root.connected && root.message != "": Text { text: root.message; color: Palette.text-dim; font-size: 11px; wrap: word-wrap; }
+        }
+
+        Rectangle {
+            height: 54px;
+            background: Palette.panel-bg;
+            border-width: 1px;
+            border-color: Palette.panel-border;
+            HorizontalLayout { padding-left: 10px; padding-right: 16px; spacing: 10px;
+                SmallButton { text: "Portals"; horizontal-stretch: 1; selected: root.active-tab == 0; clicked => { root.active-tab = 0; } }
+                SmallButton { text: "Log"; horizontal-stretch: 1; selected: root.active-tab == 1; clicked => { root.active-tab = 1; } }
+                SmallButton { text: "Settings"; horizontal-stretch: 1; selected: root.active-tab == 2 || root.settings-open; clicked => { root.settings-open = true; root.settings-startup-only = false; } }
+            }
+        }
+
+        if root.active-tab == 0 && !root.empty: Rectangle {
+            background: Palette.window-bg;
+            PortalList { x: 16px; y: 16px; width: root.width - 32px; height: root.height - 122px;
+                names: root.portal-names; metas: root.portal-metas; selected: root.selected-portal;
+                select(i) => { root.select-portal(i); } edit(i) => { root.edit-portal(i); } remove(i) => { root.remove-portal(i); } add => { root.add-portal(); } }
+        }
+        if root.active-tab == 1: Rectangle {
+            background: Palette.window-bg;
+            LogView { x: 16px; y: 16px; width: root.width - 32px; height: root.height - 122px;
+                log-text: root.log-text; lines: root.log-lines; status-title: root.log-status; status-dot: root.status-dot; copy => { root.copy-log(); } }
+        }
+    }
+
+    if root.settings-open: SettingsDialog {
+        theme: root.theme; reconnect: root.reconnect; launch-at-login: root.launch-at-login;
+        connect-at-login: root.connect-at-login; close-to-tray: root.close-to-tray;
+        openconnect-bin: root.openconnect-bin; gpclient-bin: root.gpclient-bin;
+        startup-only: root.settings-startup-only;
+        save => { root.save-settings(); } cancel => { root.close-settings(); }
+    }
+}

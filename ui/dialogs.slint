@@ -1,0 +1,229 @@
+import { Button, CheckBox, LineEdit, TextEdit } from "std-widgets.slint";
+import { Palette, StatusDot, PrimaryButton, SmallButton, FieldLabel, SectionTitle } from "theme.slint";
+
+global PortalInfo {
+    in-out property <string> name;
+    in-out property <string> host;
+    in-out property <string> username;
+    in-out property <string> auth;
+    in-out property <string> backend;
+    in-out property <bool> reuse;
+}
+
+export component PortalEditorDialog inherits Window {
+    in-out property <bool> is-new: true;
+    in-out property <string> name;
+    in-out property <string> host;
+    in-out property <string> username;
+    in-out property <bool> saml;
+    in-out property <bool> gpclient;
+    in-out property <bool> reuse: true;
+    in-out property <string> error;
+
+    callback save();
+    callback cancel();
+
+    title: "Palisade";
+    width: 460px;
+    height: 560px;
+    background: Palette.window-bg;
+    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
+
+    VerticalLayout {
+        Rectangle {
+            height: 46px;
+            background: Palette.header-bg;
+            border-width: 1px;
+            border-color: Palette.border;
+            HorizontalLayout {
+                spacing: 12px;
+                padding-left: 8px; padding-right: 12px;
+                SmallButton { text: "← Back"; clicked => { root.cancel(); } }
+                Text { text: root.is-new ? "Add Portal" : "Edit Portal"; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+            }
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+            FieldLabel { text: "Name"; }
+            Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                LineEdit { text <=> root.name; font-size: 13px; placeholder-text: "Display name"; } }
+            FieldLabel { text: "Portal hostname"; }
+            Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                LineEdit { text <=> root.host; font-size: 13px; placeholder-text: "vpn.example.com"; } }
+            FieldLabel { text: "Username"; }
+            Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                LineEdit { text <=> root.username; font-size: 13px; placeholder-text: "username"; } }
+            FieldLabel { text: "Auth"; }
+            HorizontalLayout { spacing: 18px;
+                CheckBox { text: "Password"; checked: !root.saml; toggled => { root.saml = !self.checked; } }
+                CheckBox { text: "SAML (browser)"; checked: root.saml; toggled => { root.saml = self.checked; } }
+            }
+            FieldLabel { text: "Backend"; }
+            HorizontalLayout { spacing: 18px;
+                CheckBox { text: "openconnect"; checked: !root.gpclient; toggled => { root.gpclient = !self.checked; } }
+                CheckBox { text: "gpclient"; checked: root.gpclient; toggled => { root.gpclient = self.checked; } }
+            }
+            CheckBox { text: "Reuse saved login and password for repeated prompts"; checked <=> root.reuse; }
+            Text { text: "Saved credentials will be reused when the portal asks again."; color: Palette.text-dim; font-size: 11px; }
+            Text { text: root.error; color: Palette.red; font-size: 12px; }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout { spacing: 10px;
+                SmallButton { text: "Cancel"; clicked => { root.cancel(); } }
+                PrimaryButton { text: "Save"; emphasized: true; horizontal-stretch: 1; clicked => { root.save(); } }
+            }
+        }
+    }
+}
+
+export component PasswordDialog inherits Window {
+    in property <string> portal-name;
+    in property <string> portal-host;
+    in property <string> username;
+    in-out property <string> password;
+    in-out property <bool> remember;
+
+    callback connect();
+    callback cancel();
+
+    title: "Palisade";
+    width: 380px;
+    height: 260px;
+    background: Palette.window-bg;
+    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
+
+    VerticalLayout {
+        Rectangle {
+            height: 36px;
+            background: Palette.header-bg;
+            border-width: 1px;
+            border-color: Palette.border;
+            HorizontalLayout { padding-left: 6px; padding-right: 14px;
+                Text { text: "VPN Password"; font-size: 13px; font-weight: 700; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                SmallButton { text: "✕"; clicked => { root.cancel(); } }
+            }
+        }
+        VerticalLayout { padding: 14px; spacing: 10px;
+            Text { text: "Portal: \{root.portal-name} (\{root.portal-host})"; color: Palette.text-dim; font-size: 12px; }
+            FieldLabel { text: "Password for \{root.username}"; }
+            Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                LineEdit { text <=> root.password; font-size: 13px;
+                    accepted => { root.connect(); } } }
+            CheckBox { text: "Remember in system keyring"; checked <=> root.remember; }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout { spacing: 8px;
+                Rectangle { horizontal-stretch: 1; }
+                SmallButton { text: "Cancel"; clicked => { root.cancel(); } }
+                SmallButton { text: "Connect"; highlighted: true; clicked => { root.connect(); } }
+            }
+        }
+    }
+}
+
+export component VerificationDialog inherits Window {
+    in property <string> message;
+    in-out property <string> code;
+
+    callback submit();
+    callback cancel();
+
+    title: "Palisade";
+    width: 340px;
+    height: 200px;
+    background: Palette.window-bg;
+    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
+
+    VerticalLayout {
+        Rectangle {
+            height: 36px;
+            background: Palette.header-bg;
+            border-width: 1px;
+            border-color: Palette.border;
+            HorizontalLayout { padding-left: 6px; padding-right: 14px;
+                Text { text: "Verification Code"; font-size: 13px; font-weight: 700; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                SmallButton { text: "✕"; clicked => { root.cancel(); } }
+            }
+        }
+        VerticalLayout { padding: 14px; spacing: 10px;
+            Text { text: root.message; font-size: 13px; wrap: word-wrap; }
+            Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                LineEdit { text <=> root.code; font-size: 13px;
+                    accepted => { root.submit(); } } }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout { spacing: 8px;
+                Rectangle { horizontal-stretch: 1; }
+                SmallButton { text: "Cancel"; clicked => { root.cancel(); } }
+                SmallButton { text: "OK"; highlighted: true; clicked => { root.submit(); } }
+            }
+        }
+    }
+}
+
+export component SettingsDialog inherits Window {
+    in-out property <int> theme: 0;
+    in-out property <bool> reconnect: true;
+    in-out property <bool> launch-at-login;
+    in-out property <bool> connect-at-login;
+    in-out property <bool> close-to-tray;
+    in-out property <string> openconnect-bin;
+    in-out property <string> gpclient-bin;
+    in-out property <bool> startup-only: false;
+
+    callback save();
+    callback cancel();
+
+    title: "Palisade";
+    width: 460px;
+    height: 560px;
+    background: Palette.window-bg;
+    default-font-family: "Noto Sans, DejaVu Sans, sans-serif";
+
+    VerticalLayout {
+        Rectangle {
+            height: 46px;
+            background: Palette.header-bg;
+            border-width: 1px;
+            border-color: Palette.border;
+            HorizontalLayout { spacing: 12px; padding-left: 8px; padding-right: 12px;
+                SmallButton { text: "← Back"; clicked => { root.cancel(); } }
+                Text { text: "Settings"; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+            }
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 8px;
+            if root.startup-only: SectionTitle { text: "STARTUP"; }
+            if !root.startup-only: FieldLabel { text: "Theme"; }
+            if !root.startup-only: HorizontalLayout { spacing: 18px;
+                CheckBox { text: "System"; checked: root.theme == 0; toggled => { root.theme = 0; } }
+                CheckBox { text: "Light"; checked: root.theme == 1; toggled => { root.theme = 1; } }
+                CheckBox { text: "Dark"; checked: root.theme == 2; toggled => { root.theme = 2; } }
+            }
+            Rectangle { height: 1px; background: Palette.border; }
+            if !root.startup-only: CheckBox { text: "Reconnect on unexpected drop"; checked <=> root.reconnect; }
+            CheckBox { text: "Launch at login"; checked <=> root.launch-at-login; }
+            CheckBox { text: "Connect at login"; checked <=> root.connect-at-login; }
+            if root.startup-only: Text { text: "Connects to the last used portal when the application starts."; color: Palette.text-dim; font-size: 11px; }
+            CheckBox { text: "Close to tray"; checked <=> root.close-to-tray; }
+            Rectangle { height: 1px; background: Palette.border; }
+            if !root.startup-only: FieldLabel { text: "openconnect binary"; }
+            if !root.startup-only: Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                LineEdit { text <=> root.openconnect-bin; font-size: 12px; placeholder-text: "(empty)"; } }
+            if !root.startup-only: Text { text: "Leave empty to use PATH."; color: Palette.text-dim; font-size: 11px; }
+            if !root.startup-only: FieldLabel { text: "gpclient binary"; }
+            if !root.startup-only: Rectangle { height: 34px; border-width: 1px; border-color: Palette.button-border; border-radius: 4px; background: #ffffff;
+                LineEdit { text <=> root.gpclient-bin; font-size: 12px; placeholder-text: "(empty)"; } }
+            if !root.startup-only: Text { text: "Leave empty to use PATH."; color: Palette.text-dim; font-size: 11px; }
+            if root.startup-only: Text { text: "Launch at login and Connect at login work together: the app starts with the system and immediately brings up the last used portal."; color: Palette.text-dim; font-size: 12px; wrap: word-wrap; }
+            Rectangle { vertical-stretch: 1; }
+            HorizontalLayout { spacing: 10px;
+                SmallButton { text: "Cancel"; clicked => { root.cancel(); } }
+                PrimaryButton { text: "Save"; emphasized: true; horizontal-stretch: 1; clicked => { root.save(); } }
+            }
+        }
+    }
+}
