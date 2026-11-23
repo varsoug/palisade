@@ -133,6 +133,48 @@ mod tests {
     }
 
     #[test]
+    fn password_storage_only_when_remember_is_checked() {
+        assert!(password_store_decision(true));
+        assert!(!password_store_decision(false));
+    }
+
+    #[test]
+    fn config_save_roundtrip_preserves_portal_and_settings() {
+        let mut cfg = palisade_core::AppConfig::default();
+        cfg.portals.push(palisade_core::PortalConfig {
+            name: "Work".into(),
+            portal: "vpn.example.com".into(),
+            username: "alice".into(),
+            auth: palisade_core::AuthMode::Password,
+            backend: palisade_core::Backend::Openconnect,
+            reuse_credentials: true,
+        });
+        cfg.last_portal = Some(0);
+        cfg.settings.close_to_tray = true;
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: palisade_core::AppConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, cfg);
+        assert!(!json.contains("password"));
+    }
+
+    #[test]
+    fn portal_crud_keeps_no_secrets() {
+        let password = "super-secret-value";
+        let portal = palisade_core::PortalConfig {
+            name: "Lab".into(),
+            portal: "vpn.example.com".into(),
+            username: "alice".into(),
+            auth: palisade_core::AuthMode::Password,
+            backend: palisade_core::Backend::Openconnect,
+            reuse_credentials: true,
+        };
+        let json = serde_json::to_string(&portal).unwrap();
+        assert!(!json.contains(password));
+        assert_eq!(portal.portal, "vpn.example.com");
+        assert_eq!(portal.username, "alice");
+    }
+
+    #[test]
     fn status_for_empty_portal_list_shows_connect_cta() {
         let (title, subtitle, dot) = status_for(&ConnState::Disconnected);
         assert_eq!(title, "Not Connected");

@@ -11,7 +11,7 @@ a package, a NixOS module, and a dev shell.
 
 | | |
 | --- | --- |
-| 🪶 **Lightweight** | Pure-Rust [egui](https://github.com/emilk/egui) interface (glow backend). One native binary, no webview, no widget-runtime. |
+| 🪶 **Lightweight** | Native [Slint](https://slint.dev/) 1.x interface (Skia software renderer, winit backend). One native binary, no webview, no Qt/GTK runtime. |
 | 🔓 **Open source** | GPL-3.0-or-later. The protocol is handled by OpenConnect, the free GlobalProtect implementation. |
 | 🔒 **No secrets on disk** | Passwords live in the OS keyring (Windows Credential Manager / Secret Service / macOS Keychain). Config files contain no secrets. |
 | 🔑 **Two auth modes** | Username/password and SAML SSO via your own browser (OpenConnect `--external-browser`). One-time-code (MFA) prompts are answered in a small dialog. |

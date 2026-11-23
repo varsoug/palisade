@@ -1,31 +1,31 @@
 import { Button } from "std-widgets.slint";
 
 export global Palette {
-    out property <color> window-bg: #f2f2f2;
-    out property <color> header-bg: #e6e6e6;
-    out property <color> panel-bg: #e9e9e9;
-    out property <color> field-bg: #ffffff;
-    out property <color> button-bg: #fafafa;
-    out property <color> border: #b9b9b9;
-    out property <color> button-border: #adadad;
-    out property <color> panel-border: #d2d2d2;
-    out property <color> text: #1f1f1f;
-    out property <color> text-dim: #6a6a6a;
-    out property <color> placeholder: #9a9a9a;
-    out property <color> primary: #2f6fdb;
-    out property <color> primary-dark: #2b548a;
-    out property <color> selection: #e3ebf4;
-    out property <color> gray: #8a8a8a;
-    out property <color> amber: #c8871a;
-    out property <color> green: #2e8b3d;
-    out property <color> red: #c0392b;
-    out property <color> error-bg: #f9e9e7;
-    out property <color> error-border: #e0b4b0;
-    out property <color> error-text: #8c2f24;
+    in-out property <color> window-bg: #f2f2f2;
+    in-out property <color> header-bg: #e6e6e6;
+    in-out property <color> panel-bg: #e9e9e9;
+    in-out property <color> field-bg: #ffffff;
+    in-out property <color> button-bg: #fafafa;
+    in-out property <color> border: #b9b9b9;
+    in-out property <color> button-border: #adadad;
+    in-out property <color> panel-border: #d2d2d2;
+    in-out property <color> text: #1f1f1f;
+    in-out property <color> text-dim: #6a6a6a;
+    in-out property <color> placeholder: #9a9a9a;
+    in-out property <color> primary: #2f6fdb;
+    in-out property <color> primary-dark: #2b548a;
+    in-out property <color> selection: #e3ebf4;
+    in-out property <color> gray: #8a8a8a;
+    in-out property <color> amber: #c8871a;
+    in-out property <color> green: #2e8b3d;
+    in-out property <color> red: #c0392b;
+    in-out property <color> error-bg: #f9e9e7;
+    in-out property <color> error-border: #e0b4b0;
+    in-out property <color> error-text: #8c2f24;
 }
 
 export component StatusDot inherits Rectangle {
-    in property <color> dot-color: Palette.gray;
+    in-out property <color> dot-color: Palette.gray;
     width: 12px;
     height: 12px;
     border-radius: 6px;
@@ -35,8 +35,8 @@ export component StatusDot inherits Rectangle {
 }
 
 export component PrimaryButton inherits Rectangle {
-    in property <bool> emphasized: false;
-    in property <string> text;
+    in-out property <bool> emphasized: false;
+    in-out property <string> text;
     callback clicked();
     min-height: 38px;
     border-radius: 5px;
@@ -48,9 +48,9 @@ export component PrimaryButton inherits Rectangle {
 }
 
 export component SmallButton inherits Rectangle {
-    in property <string> text;
-    in property <bool> selected: false;
-    in property <bool> highlighted: false;
+    in-out property <string> text;
+    in-out property <bool> selected: false;
+    in-out property <bool> highlighted: false;
     callback clicked();
     min-height: 28px;
     border-radius: 4px;

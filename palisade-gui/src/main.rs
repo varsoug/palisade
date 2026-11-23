@@ -97,6 +97,11 @@ impl Controller {
                 .map(|p| SharedString::from(format!("{} ({})", p.name, p.portal)))
                 .unwrap_or_else(|| SharedString::from("Select a portal")),
         );
+        self.ui.set_portal_host(
+            self.selected_portal()
+                .map(|p| SharedString::from(p.portal.as_str()))
+                .unwrap_or_default(),
+        );
     }
 
     fn refresh_status(&self) {

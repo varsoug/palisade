@@ -1,18 +1,18 @@
 import { Button, CheckBox, LineEdit, TextEdit } from "std-widgets.slint";
 import { Palette, StatusDot, PrimaryButton, SmallButton, FieldLabel, SectionTitle } from "theme.slint";
-import { SettingsDialog } from "dialogs.slint";
+import { SettingsDialog, PasswordDialog, VerificationDialog, PortalEditorDialog } from "dialogs.slint";
 
 component StatusCard inherits Rectangle {
-    in property <color> dot-color: Palette.gray;
-    in property <string> title: "Not Connected";
-    in property <string> subtitle: "Select a portal and press Connect.";
-    in property <string> error-message;
-    in property <bool> show-error: false;
-    in property <bool> show-details: false;
-    in property <string> portal-name;
-    in property <string> username;
-    in property <string> tunnel-ip;
-    in property <bool> show-cta: false;
+    in-out property <color> dot-color: Palette.gray;
+    in-out property <string> title: "Not Connected";
+    in-out property <string> subtitle: "Select a portal and press Connect.";
+    in-out property <string> error-message;
+    in-out property <bool> show-error: false;
+    in-out property <bool> show-details: false;
+    in-out property <string> portal-name;
+    in-out property <string> username;
+    in-out property <string> tunnel-ip;
+    in-out property <bool> show-cta: false;
 
     callback add-portal();
 
@@ -56,9 +56,9 @@ component StatusCard inherits Rectangle {
 }
 
 component PortalList inherits VerticalLayout {
-    in property <[string]> names;
-    in property <[string]> metas;
-    in property <int> selected;
+    in-out property <[string]> names;
+    in-out property <[string]> metas;
+    in-out property <int> selected;
     callback select(int);
     callback edit(int);
     callback remove(int);
@@ -87,10 +87,10 @@ component PortalList inherits VerticalLayout {
 }
 
 component LogView inherits Rectangle {
-    in property <[string]> lines;
-    in property <string> log-text;
-    in property <string> status-title;
-    in property <color> status-dot: Palette.green;
+    in-out property <[string]> lines;
+    in-out property <string> log-text;
+    in-out property <string> status-title;
+    in-out property <color> status-dot: Palette.green;
     callback copy();
 
     VerticalLayout {
@@ -133,8 +133,6 @@ export component AppWindow inherits Window {
     
     in-out property <string> log-status;
     in-out property <int> active-tab: 0;
-    in-out property <bool> settings-open: false;
-    in-out property <bool> settings-startup-only: false;
     in-out property <int> theme: 0;
     in-out property <bool> reconnect: true;
     in-out property <bool> launch-at-login;
@@ -143,6 +141,24 @@ export component AppWindow inherits Window {
     in-out property <string> openconnect-bin;
     in-out property <string> gpclient-bin;
     in-out property <string> message;
+    in-out property <bool> settings-open;
+    in-out property <bool> settings-startup-only;
+    in-out property <bool> password-open: false;
+    in-out property <bool> verification-open: false;
+    in-out property <bool> portal-editor-open: false;
+    in-out property <bool> portal-editor-new: true;
+    in-out property <string> portal-host;
+    in-out property <string> password;
+    in-out property <bool> remember: true;
+    in-out property <string> challenge-message;
+    in-out property <string> verification-code;
+    in-out property <string> editor-name;
+    in-out property <string> editor-host;
+    in-out property <string> editor-username;
+    in-out property <bool> editor-saml;
+    in-out property <bool> editor-gpclient;
+    in-out property <bool> editor-reuse: true;
+    in-out property <string> editor-error;
 
     callback connect();
     callback disconnect();
@@ -152,6 +168,12 @@ export component AppWindow inherits Window {
     callback remove-portal(int);
     callback copy-log();
     callback save-settings();
+    callback password-submit();
+    callback password-cancel();
+    callback verification-submit();
+    callback verification-cancel();
+    callback portal-save();
+    callback portal-cancel();
     callback close-settings();
 
     title: "Palisade";
@@ -228,11 +250,27 @@ export component AppWindow inherits Window {
         }
     }
 
+
     if root.settings-open: SettingsDialog {
         theme: root.theme; reconnect: root.reconnect; launch-at-login: root.launch-at-login;
         connect-at-login: root.connect-at-login; close-to-tray: root.close-to-tray;
         openconnect-bin: root.openconnect-bin; gpclient-bin: root.gpclient-bin;
         startup-only: root.settings-startup-only;
         save => { root.save-settings(); } cancel => { root.close-settings(); }
+    }
+    if root.password-open: PasswordDialog {
+        portal-name: root.portal-label; portal-host: root.portal-host; username: root.username;
+        password <=> root.password; remember <=> root.remember;
+        connect => { root.password-submit(); } cancel => { root.password-cancel(); }
+    }
+    if root.verification-open: VerificationDialog {
+        message: root.challenge-message; code <=> root.verification-code;
+        submit => { root.verification-submit(); } cancel => { root.verification-cancel(); }
+    }
+    if root.portal-editor-open: PortalEditorDialog {
+        is-new: root.portal-editor-new; name <=> root.editor-name; host <=> root.editor-host;
+        username <=> root.editor-username; saml <=> root.editor-saml; gpclient <=> root.editor-gpclient;
+        reuse <=> root.editor-reuse; error: root.editor-error;
+        save => { root.portal-save(); } cancel => { root.portal-cancel(); }
     }
 }

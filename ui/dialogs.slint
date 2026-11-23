@@ -78,9 +78,9 @@ export component PortalEditorDialog inherits Window {
 }
 
 export component PasswordDialog inherits Window {
-    in property <string> portal-name;
-    in property <string> portal-host;
-    in property <string> username;
+    in-out property <string> portal-name;
+    in-out property <string> portal-host;
+    in-out property <string> username;
     in-out property <string> password;
     in-out property <bool> remember;
 
@@ -123,7 +123,7 @@ export component PasswordDialog inherits Window {
 }
 
 export component VerificationDialog inherits Window {
-    in property <string> message;
+    in-out property <string> message;
     in-out property <string> code;
 
     callback submit();
