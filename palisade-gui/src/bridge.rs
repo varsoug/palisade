@@ -1,5 +1,10 @@
 use palisade_core::ConnState;
 
+/// Whether a window close should hide to the tray instead of quitting.
+pub fn close_hides_to_tray(quitting: bool, close_to_tray: bool, tray_available: bool) -> bool {
+    !quitting && close_to_tray && tray_available
+}
+
 /// Map a connection state to the status title, subline and dot RGB used by the UI.
 pub fn status_for(state: &ConnState) -> (String, String, u32) {
     match state {
@@ -105,6 +110,14 @@ pub fn portal_valid(name: &str, portal: &str, username: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_hides_to_tray_only_when_enabled_and_available() {
+        assert!(close_hides_to_tray(false, true, true));
+        assert!(!close_hides_to_tray(false, false, true));
+        assert!(!close_hides_to_tray(false, true, false));
+        assert!(!close_hides_to_tray(true, true, true));
+    }
 
     #[test]
     fn maps_connection_states_to_mockup_status() {

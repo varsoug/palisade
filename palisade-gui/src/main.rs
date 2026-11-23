@@ -14,12 +14,14 @@ use palisade_core::{
     delete_password, get_password, store_password, AppConfig, AuthMode, Backend, ConnEvent,
     ConnState, PortalConfig, Session, Theme,
 };
-use slint::{ComponentHandle, ModelRc, SharedString, Timer, VecModel};
+use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, Timer, VecModel};
 use tokio::sync::mpsc::UnboundedReceiver;
 
 slint::include_modules!();
 
-use bridge::{credential_valid, portal_valid, prompt_hint, status_for, strip_ansi};
+use bridge::{
+    close_hides_to_tray, credential_valid, portal_valid, prompt_hint, status_for, strip_ansi,
+};
 
 const MAX_LOG_LINES: usize = 500;
 
@@ -560,6 +562,29 @@ fn main() -> Result<(), slint::PlatformError> {
         session,
         event_rx,
     )));
+
+    // Slint's winit backend calls this when the window manager asks to close
+    // the window (title-bar X, Alt+F4, etc.). Hiding the last window from the
+    // callback would quit the Slint event loop, so arm `hidden_to_tray` and let
+    // the pump timer do the hide while the session keeps running.
+    ui.window().on_close_requested({
+        let c = controller.clone();
+        move || {
+            let mut c = c.borrow_mut();
+            if close_hides_to_tray(
+                c.quitting,
+                c.config.settings.close_to_tray,
+                c.tray.is_some(),
+            ) {
+                c.hidden_to_tray = true;
+                tracing::info!("window hidden to tray; the session keeps running");
+                CloseRequestResponse::KeepWindowShown
+            } else {
+                CloseRequestResponse::HideWindow
+            }
+        }
+    });
+
     let pump = controller.clone();
     let timer = Timer::default();
     timer.start(
